@@ -78,6 +78,8 @@ class Game(object):
         self.running=0
         self.current_mode = None
 
+        self.fps = 15
+
         self.width=768; self.height=768
         self.screen=pygame.display.set_mode((self.width,self.height))
 
@@ -114,12 +116,12 @@ class Game(object):
         self.running = 1
 
         while(self.running):
-            self.clock.tick(60)
+            self.clock.tick(self.fps)
 
             self.check_events()
 
             #Run a frame of the current mode and render
-            self.current_mode.run(1.0 / 60) #For now let's just pretend the fps is perfect
+            self.current_mode.run(1.0 / self.fps) #For now let's just pretend the fps is perfect
             self.current_mode.render(self.screen)
             pygame.display.flip()
 
@@ -133,7 +135,7 @@ class Game(object):
             if len(keycode) == 1:
                 return ord(keycode) #Convert characters into key codes
             else:
-                return self.keycode_map[lower(keycode)]
+                return self.keycode_map[keycode.lower()]
         else:
             return keycode
 
@@ -176,6 +178,11 @@ class Game(object):
     def key_pressed(self, keycode):
         """Return True if specified key is being held down"""
         keycode = self.__convert_keycode(keycode)
+        #Make sure it's registered as pressed for at least one frame
+        # in case the press was too quick
+        if keycode in self.changed_key_status:
+            if self.changed_key_status[keycode] == True:
+                return True
         return self.key_status[keycode]
 
     def mouse_just_pressed(self, mouse_button):
@@ -197,6 +204,11 @@ class Game(object):
     def mouse_pressed(self, mouse_button):
         """Return True if specified mouse button is being held down"""
         mouse_button = self.__convert_mouse_code(mouse_button)
+        #Make sure it's registered as pressed for at least one frame
+        # in case the click was too quick
+        if mouse_button in self.changed_mouse_status:
+            if self.changed_mouse_status[mouse_button] == True:
+                return True
         return self.mouse_status[mouse_button]
 
     def check_events(self):
@@ -327,6 +339,7 @@ class Tilemap(object):
 ###Here starts the game
 
 T_GROUND   = 0
+T_GROUND2  = 12
 T_OBSTACLE = 1
 T_OBSTACLE2= 6
 T_GOAL     = 4
@@ -340,46 +353,336 @@ T_RED_PATH = 5
 T_BLU_PATH = 10
 T_MIX_PATH = 11
 
+T_RED_PATH2 = 15
+T_BLU_PATH2 = 16
+T_MIX_PATH2 = 17
+
+T_CURSOR_RED = 20
+T_CURSOR_BLU = 21
+T_CURSOR_MIX = 22
+T_ICON_RED_PEG = 23
+T_ICON_BLU_PEG = 24
+T_ICON_OBSTACLE = 19
+T_ICON_GROUND = 12
 
 class PegGameMode(Mode):
     def start(self):
-        self.tiles = gen_list2d(32, 32) #Game tiles
         self.tileset = Tilesheet("tileset.png", 24, 24) #Tileset
         self.tilemap = Tilemap(self.tileset, 32, 32) #On-screen tiles
 
         self._generate_map()
 
+        self.turn = 0
+        self.turn_player = 0
+
+        self.CHARGE_WALL = 3
+        self.CHARGE_FLOOR = 5
+
+        self.red_cursor = [ 0, 19]
+        self.blu_cursor = [13, 31]
+
+        self.red_charge_wall = 0
+        self.red_charge_floor = 0
+        self.blu_charge_wall = 0
+        self.blu_charge_floor = 0
+
+        self.red_image = pygame.Surface((8 * 24 + 3, 4 * 24 + 3))
+        self.blu_image = pygame.Surface((8 * 24 + 3, 4 * 24 + 3))
+
+        self._update_status()
+
     def _generate_map(self):
+        tiles = gen_list2d(32, 32)
         for x in range(32):
             for y in range(32):
                 if (x + y <= 15) or ((32-x) + (32-y) <= 15):
-                    self.tiles[x][y] = T_OBSTACLE
+                    tiles[x][y] = T_OBSTACLE
                 elif (x + (32-y) <= 5):
-                    self.tiles[x][y] = T_OBSTACLE
+                    tiles[x][y] = T_OBSTACLE
                 elif (x == 0) and (y == 19):
-                    self.tiles[x][y] = T_RED_BASE
+                    tiles[x][y] = T_RED_BASE
                 elif (x == 32 - 19) and (y == 31):
-                    self.tiles[x][y] = T_BLU_BASE
+                    tiles[x][y] = T_BLU_BASE
                 elif (x == 30) and (y == 1):
-                    self.tiles[x][y] = T_GOAL
+                    tiles[x][y] = T_GOAL
                 elif (x > 1) and (y < 30):
                     if random.randint(0, 2) == 0:
-                        self.tiles[x][y] = T_OBSTACLE
+                        tiles[x][y] = T_OBSTACLE
                     else:
-                        self.tiles[x][y] = T_GROUND
+                        tiles[x][y] = T_GROUND
 
-        self.tilemap.from_list(self.tiles)
+        self.tilemap.from_list(tiles)
+
+        self._cast_paths()
+
+    def _cast_paths(self):
+        passable = [
+            T_GROUND, T_GROUND2,
+            T_BLU_PATH, T_RED_PATH, T_MIX_PATH,
+            T_BLU_PATH2, T_RED_PATH2, T_MIX_PATH2,
+        ]
+        #Clear paths
+        for x in range(32):
+            for y in range(32):
+                if self.tilemap.get_tile(x, y) in [T_BLU_PATH, T_RED_PATH, T_MIX_PATH]:
+                    self.tilemap.set_tile(x, y, T_GROUND)
+                if self.tilemap.get_tile(x, y) in [T_BLU_PATH2, T_RED_PATH2, T_MIX_PATH2]:
+                    self.tilemap.set_tile(x, y, T_GROUND2)
+        #Recalculate paths
+        for x in range(32):
+            for y in range(32):
+                if self.tilemap.get_tile(x, y) in [T_BLU_BASE, T_BLU_PEG]:
+                    #Holy mother of god what is this black voodoo
+                    x2 = x - 1
+                    while (x2 > 0) and self.tilemap.get_tile(x2, y) in passable:
+                        if   self.tilemap.get_tile(x2, y) in [T_RED_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
+                        elif self.tilemap.get_tile(x2, y) in [T_RED_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
+                        elif self.tilemap.get_tile(x2, y) == T_GROUND2: ttype = T_BLU_PATH2
+                        else: ttype = T_BLU_PATH
+
+                        self.tilemap.set_tile(x2, y, ttype)
+                        x2 -= 1
+                    x2 = x + 1
+                    while (x2 < 31) and self.tilemap.get_tile(x2, y) in passable:
+                        if   self.tilemap.get_tile(x2, y) in [T_RED_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
+                        elif self.tilemap.get_tile(x2, y) in [T_RED_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
+                        elif self.tilemap.get_tile(x2, y) == T_GROUND2: ttype = T_BLU_PATH2
+                        else: ttype = T_BLU_PATH
+
+                        self.tilemap.set_tile(x2, y, ttype)
+                        x2 += 1
+                    y2 = y - 1
+                    while (y2 > 0) and self.tilemap.get_tile(x, y2) in passable:
+                        if   self.tilemap.get_tile(x, y2) in [T_RED_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
+                        elif self.tilemap.get_tile(x, y2) in [T_RED_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
+                        elif self.tilemap.get_tile(x, y2) == T_GROUND2: ttype = T_BLU_PATH2
+                        else: ttype = T_BLU_PATH
+
+                        self.tilemap.set_tile(x, y2, ttype)
+                        y2 -= 1
+                    y2 = y + 1
+                    while (y2 < 31) and self.tilemap.get_tile(x, y2) in passable:
+                        if   self.tilemap.get_tile(x, y2) in [T_RED_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
+                        elif self.tilemap.get_tile(x, y2) in [T_RED_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
+                        elif self.tilemap.get_tile(x, y2) == T_GROUND2: ttype = T_BLU_PATH2
+                        else: ttype = T_BLU_PATH
+
+                        self.tilemap.set_tile(x, y2, ttype)
+                        y2 += 1
+
+                if self.tilemap.get_tile(x, y) in [T_RED_BASE, T_RED_PEG]:
+                    x2 = x - 1
+                    while (x2 > 0) and self.tilemap.get_tile(x2, y) in passable:
+                        if   self.tilemap.get_tile(x2, y) in [T_BLU_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
+                        elif self.tilemap.get_tile(x2, y) in [T_BLU_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
+                        elif self.tilemap.get_tile(x2, y) == T_GROUND2: ttype = T_RED_PATH2
+                        else: ttype = T_RED_PATH
+
+                        self.tilemap.set_tile(x2, y, ttype)
+                        x2 -= 1
+                    x2 = x + 1
+                    while (x2 < 31) and self.tilemap.get_tile(x2, y) in passable:
+                        if   self.tilemap.get_tile(x2, y) in [T_BLU_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
+                        elif self.tilemap.get_tile(x2, y) in [T_BLU_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
+                        elif self.tilemap.get_tile(x2, y) == T_GROUND2: ttype = T_RED_PATH2
+                        else: ttype = T_RED_PATH
+
+                        self.tilemap.set_tile(x2, y, ttype)
+                        x2 += 1
+                    y2 = y - 1
+                    while (y2 > 0) and self.tilemap.get_tile(x, y2) in passable:
+                        if   self.tilemap.get_tile(x, y2) in [T_BLU_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
+                        elif self.tilemap.get_tile(x, y2) in [T_BLU_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
+                        elif self.tilemap.get_tile(x, y2) == T_GROUND2: ttype = T_RED_PATH2
+                        else: ttype = T_RED_PATH
+
+                        self.tilemap.set_tile(x, y2, ttype)
+                        y2 -= 1
+                    y2 = y + 1
+                    while (y2 < 31) and self.tilemap.get_tile(x, y2) in passable:
+                        if   self.tilemap.get_tile(x, y2) in [T_BLU_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
+                        elif self.tilemap.get_tile(x, y2) in [T_BLU_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
+                        elif self.tilemap.get_tile(x, y2) == T_GROUND2: ttype = T_RED_PATH2
+                        else: ttype = T_RED_PATH
+
+                        self.tilemap.set_tile(x, y2, ttype)
+                        y2 += 1
+
+    def _update_status(self):
+        icon_y = int(2.5 * 24)
+        icon1pos = int(3.5 * 24)
+        icon2pos = int(5.0 * 24)
+        icon3pos = int(6.5 * 24)
+
+        red_red = (206, 60, 60)
+        blu_blue = (60, 60, 206)
+
+        black = (0, 0, 0)
+        gray75 = (192, 192, 192)
+        green = (0, 192, 0)
+
+        color = red_red if (self.turn_player == 0) else gray75
+        self.red_image.fill(color)
+        color = blu_blue if (self.turn_player == 1) else gray75
+        self.blu_image.fill(color)
+
+        self.red_image.fill(black, (0, 0, 8*24, 4*24))
+        self.blu_image.fill(black, (3, 3, 8*24, 4*24))
+
+        icons = [
+            [icon1pos, 1, 1, 1],
+            [icon2pos, self.red_charge_wall, self.blu_charge_wall, self.CHARGE_WALL],
+            [icon3pos, self.red_charge_floor, self.blu_charge_floor, self.CHARGE_FLOOR],
+        ]
+
+        for icon in icons:
+            red_charge = 1.0 - 1.0 * icon[1] / icon[3]
+            blu_charge = 1.0 - 1.0 * icon[2] / icon[3]
+
+            red_color = green if (self.turn_player == 0) else gray75
+            blu_color = green if (self.turn_player == 1) else gray75
+
+            red_y = icon_y - 2 + int(red_charge * 28)
+            red_h = 28 - int(red_charge * 28)
+
+            blu_y = icon_y - 2 + int(blu_charge * 28)
+            blu_h = 28 - int(blu_charge * 28)
+
+            self.red_image.fill(red_color, (icon[0] - 2, red_y, 28, red_h))
+            self.red_image.fill(black, (icon[0], icon_y, 24, 24))
+            self.blu_image.fill(blu_color, (icon[0] - 2 + 3, blu_y + 3, 28, blu_h))
+            self.blu_image.fill(black, (icon[0] + 3, icon_y + 3, 24, 24))
+
+        rect = self.tileset.get_tile_rect(T_ICON_RED_PEG)
+        self.red_image.blit(self.tileset.image, (icon1pos, icon_y) , rect)
+        rect = self.tileset.get_tile_rect(T_ICON_BLU_PEG)
+        self.blu_image.blit(self.tileset.image, (icon1pos+3, icon_y+3) , rect)
+
+        rect = self.tileset.get_tile_rect(T_ICON_OBSTACLE)
+        self.red_image.blit(self.tileset.image, (icon2pos, icon_y) , rect)
+        self.blu_image.blit(self.tileset.image, (icon2pos+3, icon_y+3) , rect)
+
+        rect = self.tileset.get_tile_rect(T_ICON_GROUND)
+        self.red_image.blit(self.tileset.image, (icon3pos, icon_y) , rect)
+        self.blu_image.blit(self.tileset.image, (icon3pos+3, icon_y+3) , rect)
+
+        #self.fill(
+        #TODO: THIS
+        #TODO: THIS x2
+        #TODO: THIS x3
+        #TODO: SRSLY DONT FORGET
+
+    def _end_turn(self):
+        self.turn += 1
+        self.turn_player ^= 1
+
+        self.red_charge_wall  = min(self.red_charge_wall  + 1, self.CHARGE_WALL )
+        self.red_charge_floor = min(self.red_charge_floor + 1, self.CHARGE_FLOOR)
+
+        self.blu_charge_wall  = min(self.blu_charge_wall  + 1, self.CHARGE_WALL )
+        self.blu_charge_floor = min(self.blu_charge_floor + 1, self.CHARGE_FLOOR)
+
+        self._cast_paths()
+        self._update_status()
 
     def run(self, delta_time):
         tx = self.parent.mouse_pos[0] // 24
         ty = self.parent.mouse_pos[1] // 24
         if self.parent.mouse_pressed("left"):
             self.tilemap.set_tile(tx, ty, T_OBSTACLE2)
+            self._cast_paths()
         if self.parent.mouse_pressed("right"):
-            self.tilemap.set_tile(tx, ty, T_GROUND)
+            self.tilemap.set_tile(tx, ty, T_GROUND2)
+            self._cast_paths()
+
+        if self.parent.key_pressed("w"): self.red_cursor[1] -= 1
+        if self.parent.key_pressed("s"): self.red_cursor[1] += 1
+        if self.parent.key_pressed("a"): self.red_cursor[0] -= 1
+        if self.parent.key_pressed("d"): self.red_cursor[0] += 1
+
+        if self.parent.key_pressed("up"): self.blu_cursor[1] -= 1
+        if self.parent.key_pressed("down"): self.blu_cursor[1] += 1
+        if self.parent.key_pressed("left"): self.blu_cursor[0] -= 1
+        if self.parent.key_pressed("right"): self.blu_cursor[0] += 1
+
+        immutable_tiles = [
+            T_RED_BASE, T_RED_PEG,
+            T_BLU_BASE, T_BLU_PEG,
+            T_OBSTACLE2, T_GROUND2,
+            T_GOAL,
+        ]
+
+        if self.turn_player == 0:
+            rc = self.red_cursor
+            if self.parent.key_just_pressed("c"):
+                if self.tilemap.get_tile(rc[0], rc[1]) == T_RED_PATH:
+                    self.tilemap.set_tile(rc[0], rc[1], T_RED_PEG)
+                    self._end_turn()
+
+            if self.parent.key_just_pressed("v"):
+                if self.red_charge_wall == self.CHARGE_WALL:
+                    if self.tilemap.get_tile(rc[0], rc[1]) not in immutable_tiles:
+                        self.tilemap.set_tile(rc[0], rc[1], T_OBSTACLE2)
+                        self.red_charge_wall = -1
+                        self._end_turn()
+
+            if self.parent.key_just_pressed("b"):
+                if self.red_charge_floor == self.CHARGE_FLOOR:
+                    if self.tilemap.get_tile(rc[0], rc[1]) not in immutable_tiles:
+                        self.tilemap.set_tile(rc[0], rc[1], T_GROUND2)
+                        self.red_charge_floor = -1
+                        self._end_turn()
+
+
+        if self.turn_player == 1:
+            bc = self.blu_cursor
+            if self.parent.key_just_pressed("KP1"):
+                if self.tilemap.get_tile(bc[0], bc[1]) == T_BLU_PATH:
+                    self.tilemap.set_tile(bc[0], bc[1], T_BLU_PEG)
+                    self._end_turn()
+
+            if self.parent.key_just_pressed("KP2"):
+                if self.blu_charge_wall == self.CHARGE_WALL:
+                    if self.tilemap.get_tile(bc[0], bc[1]) not in immutable_tiles:
+                        self.tilemap.set_tile(bc[0], bc[1], T_OBSTACLE2)
+                        self.blu_charge_wall = -1
+                        self._end_turn()
+
+            if self.parent.key_just_pressed("KP3"):
+                if self.blu_charge_floor == self.CHARGE_FLOOR:
+                    if self.tilemap.get_tile(bc[0], bc[1]) not in immutable_tiles:
+                        self.tilemap.set_tile(bc[0], bc[1], T_GROUND2)
+                        self.blu_charge_wall = -1
+                        self._end_turn()
 
     def render(self, surface):
         surface.blit(self.tilemap.image, (0, 0))
+
+        #Render cursors
+        pos1 = (self.red_cursor[0] * 24, self.red_cursor[1] * 24)
+        pos2 = (self.blu_cursor[0] * 24, self.blu_cursor[1] * 24)
+        rect1 = self.tileset.get_tile_rect(T_CURSOR_RED)
+        rect2 = self.tileset.get_tile_rect(T_CURSOR_BLU)
+        rect3 = self.tileset.get_tile_rect(T_CURSOR_MIX)
+        if pos1 == pos2:
+            surface.blit(self.tileset.image, pos1, rect3)
+        else:
+            #Render RED cursor
+            surface.blit(self.tileset.image, pos1, rect1)
+            #Render BLU cursor
+            surface.blit(self.tileset.image, pos2, rect2)
+
+        font = pygame.font.Font(None, 24)
+        text = font.render("Cell types:", 1, (155, 155, 155))
+        textpos = text.get_rect(left=8,top=16*16)
+        surface.blit(text, textpos)
+
+        surface.blit(self.red_image, (0, 0))
+        blu_status_pos = (
+            768 - self.blu_image.get_width(),
+            768 - self.blu_image.get_height()
+        )
+        surface.blit(self.blu_image, blu_status_pos)
 
 
 class PegGame(Game):

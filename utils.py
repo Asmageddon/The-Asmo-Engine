@@ -9,10 +9,12 @@ def load_image(path, color_key = None):
     except pygame.error, message:
         raise SystemExit, message
 
-    image = image.convert()
+    #image = image.convert()
+    image = image.convert_alpha()
 
     if color_key != None:
         image.set_colorkey(pygame.Color(color_key))
+
 
     return image
 
