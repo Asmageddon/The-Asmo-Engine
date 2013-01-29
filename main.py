@@ -75,7 +75,7 @@ class Game(object):
         pygame.mouse.set_visible(1) #Set mouse to visible
 
         self.clock = pygame.time.Clock()
-        self.running=0
+        self.running = False
         self.current_mode = None
 
         self.fps = 15
@@ -105,7 +105,13 @@ class Game(object):
 
     def set_mode(self, mode):
         mode._attach_parent(self)
+        if self.running:
+            self.current_mode.stop()
+
         self.current_mode = mode
+
+        if self.running:
+            self.current_mode.start()
 
     def run(self):
         self.start()
@@ -113,7 +119,7 @@ class Game(object):
         if self.current_mode == None: return
 
         self.current_mode.start()
-        self.running = 1
+        self.running = True
 
         while(self.running):
             self.clock.tick(self.fps)
@@ -133,6 +139,7 @@ class Game(object):
     def __convert_keycode(self, keycode):
         if type(keycode) == str:
             if len(keycode) == 1:
+                if keycode == '~': keycode = '`' #Convert tilde to backtick
                 return ord(keycode) #Convert characters into key codes
             else:
                 return self.keycode_map[keycode.lower()]
@@ -227,7 +234,7 @@ class Game(object):
                 #Some alt+key special hotkeys
                 if pygame.key.get_mods() & pygame.KMOD_ALT:
                     if event.key == pygame.K_ESCAPE:
-                        self.running = 0
+                        self.running = False
                     if event.key == pygame.K_F12:
                         pygame.image.save(self.screen, utils.join_path("user", "screenshot.png"))
 
@@ -365,6 +372,78 @@ T_ICON_BLU_PEG = 24
 T_ICON_OBSTACLE = 19
 T_ICON_GROUND = 12
 
+class MenuMode(Mode):
+    def start(self):
+        self.visuals = pygame.Surface((768, 768))
+        self.visuals.fill((0, 0, 0))
+
+        font = pygame.font.Font(None, 32)
+
+        lines = ["1. Start Game (local)", "2. Instructions", "3. Quit"]
+
+        for i, line in enumerate(lines):
+            text = font.render(line, 1, (230, 230, 50))
+            textpos = text.get_rect(center=(384, 384 - len(lines) * 18 + i * 36))
+            self.visuals.blit(text, textpos)
+
+    def run(self, delta_time):
+        if self.parent.key_just_pressed("1"):
+            self.parent.set_mode(PegGameMode())
+        elif self.parent.key_just_pressed("2"):
+            self.parent.set_mode(InstructionsMode())
+        elif self.parent.key_just_pressed("3"):
+            self.parent.running = False
+
+    def render(self, surface):
+        surface.blit(self.visuals, (0, 0))
+
+class InstructionsMode(Mode):
+    def start(self):
+        self.visuals = pygame.Surface((768, 768))
+        self.visuals.fill((0, 0, 0))
+
+        font = pygame.font.Font(None, 24)
+
+        lines = [
+            "The goal of this game is to place a peg of your own as close to the goal as possible",
+            "and prevent the enemy from doing so",
+            "",
+            "Rules:",
+            "1. You can only place your pegs in direct line of sight from one of your pegs",
+            "2. You cannot place your peg on a tile that is in enemy line of sight",
+            "3. Every 3 turns you can place an obstacle anywhere on the map",
+            "4. Every 5 turns you can remove an obstacle from anywhere on the map",
+            "5. You can not modify obstacles or floors placed by you or your enemy",
+            "6. You can not modify terrain directly next to one of enemy pegs (not implemented)",
+            "",
+            "Red player controls:",
+            "W/S/A/D - move cursor",
+            "C/V/B - place peg/obstacle/floor respectively, if charged",
+            "Blue player controls:",
+            "Up/Down/Left/Right - move cursor",
+            "Num1/Num2/Num3 - place peg/obstacle/floor respectively, if charged",
+            "Other controls:",
+            "r - generate a new map, only works on the first turn, for balancing purposes",
+            "Esc - quit, confirm with 'Y'",
+        ]
+
+        for i, line in enumerate(lines):
+            text = font.render(line, 1, (230, 230, 50))
+            textpos = text.get_rect(center=(384, 384 - len(lines) * 12 + i * 24))
+            self.visuals.blit(text, textpos)
+
+        font = pygame.font.Font(None, 32)
+        text = font.render("Press Esc to go back to menu", 1, (240, 30, 30))
+        textpos = text.get_rect(bottom = 768 - 12, right = 768 - 24)
+        self.visuals.blit(text, textpos)
+
+    def run(self, delta_time):
+        if self.parent.key_just_pressed("escape"):
+            self.parent.set_mode(MenuMode())
+
+    def render(self, surface):
+        surface.blit(self.visuals, (0, 0))
+
 class PegGameMode(Mode):
     def start(self):
         self.tileset = Tilesheet("tileset.png", 24, 24) #Tileset
@@ -389,6 +468,17 @@ class PegGameMode(Mode):
         self.red_image = pygame.Surface((8 * 24 + 3, 4 * 24 + 3))
         self.blu_image = pygame.Surface((8 * 24 + 3, 4 * 24 + 3))
 
+        self.quit_image = None
+
+        font = pygame.font.Font(None, 32)
+
+        text = font.render("Really quit (Y/Esc)?", 1, (230, 230, 50))
+        textpos = text.get_rect()#left=8,top=16*16)
+        self.quit_image = pygame.Surface((textpos[2], textpos[3]))
+        self.quit_image.blit(text, textpos)
+
+        self.quit_popup = False
+
         self._update_status()
 
     def _generate_map(self):
@@ -410,6 +500,25 @@ class PegGameMode(Mode):
                         tiles[x][y] = T_OBSTACLE
                     else:
                         tiles[x][y] = T_GROUND
+
+        #Some simple cellular automata magic to hopefully make the map nicer
+        oldmap = [x[:] for x in tiles]
+        for x in range(1, 30):
+            for y in range(1, 30):
+                if (x + y <= 15) or ((32-x) + (32-y) <= 15): continue
+                elif (x + (32-y) <= 5): continue
+
+                c = 0
+                for (mx, my) in [(1, -1), (1, 0), (1, 1), (0, -1), (0, 1), (-1, -1), (-1, 0), (-1, 1)]:
+                    c += int(oldmap[x+mx][y+my] == T_OBSTACLE)
+                c2 = 8 - c
+
+                if oldmap[x][y] == T_OBSTACLE:
+                    if random.randint(0, c2 + 0) <= 1:
+                        tiles[x][y] = T_GROUND
+                elif oldmap[x][y] == T_GROUND:
+                    if random.randint(0, c + 4) == 0:
+                        tiles[x][y] = T_OBSTACLE
 
         self.tilemap.from_list(tiles)
 
@@ -438,15 +547,17 @@ class PegGameMode(Mode):
                         if   self.tilemap.get_tile(x2, y) in [T_RED_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
                         elif self.tilemap.get_tile(x2, y) in [T_RED_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
                         elif self.tilemap.get_tile(x2, y) == T_GROUND2: ttype = T_BLU_PATH2
+                        elif self.tilemap.get_tile(x2, y) == T_BLU_PATH2: ttype = T_BLU_PATH2
                         else: ttype = T_BLU_PATH
 
                         self.tilemap.set_tile(x2, y, ttype)
                         x2 -= 1
                     x2 = x + 1
-                    while (x2 < 31) and self.tilemap.get_tile(x2, y) in passable:
+                    while (x2 < 32) and self.tilemap.get_tile(x2, y) in passable:
                         if   self.tilemap.get_tile(x2, y) in [T_RED_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
                         elif self.tilemap.get_tile(x2, y) in [T_RED_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
                         elif self.tilemap.get_tile(x2, y) == T_GROUND2: ttype = T_BLU_PATH2
+                        elif self.tilemap.get_tile(x2, y) == T_BLU_PATH2: ttype = T_BLU_PATH2
                         else: ttype = T_BLU_PATH
 
                         self.tilemap.set_tile(x2, y, ttype)
@@ -456,14 +567,16 @@ class PegGameMode(Mode):
                         if   self.tilemap.get_tile(x, y2) in [T_RED_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
                         elif self.tilemap.get_tile(x, y2) in [T_RED_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
                         elif self.tilemap.get_tile(x, y2) == T_GROUND2: ttype = T_BLU_PATH2
+                        elif self.tilemap.get_tile(x, y2) == T_BLU_PATH2: ttype = T_BLU_PATH2
                         else: ttype = T_BLU_PATH
 
                         self.tilemap.set_tile(x, y2, ttype)
                         y2 -= 1
                     y2 = y + 1
-                    while (y2 < 31) and self.tilemap.get_tile(x, y2) in passable:
+                    while (y2 < 32) and self.tilemap.get_tile(x, y2) in passable:
                         if   self.tilemap.get_tile(x, y2) in [T_RED_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
                         elif self.tilemap.get_tile(x, y2) in [T_RED_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
+                        elif self.tilemap.get_tile(x, y2) == T_BLU_PATH2: ttype = T_BLU_PATH2
                         elif self.tilemap.get_tile(x, y2) == T_GROUND2: ttype = T_BLU_PATH2
                         else: ttype = T_BLU_PATH
 
@@ -475,15 +588,17 @@ class PegGameMode(Mode):
                     while (x2 > 0) and self.tilemap.get_tile(x2, y) in passable:
                         if   self.tilemap.get_tile(x2, y) in [T_BLU_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
                         elif self.tilemap.get_tile(x2, y) in [T_BLU_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
+                        elif self.tilemap.get_tile(x2, y) == T_RED_PATH2: ttype = T_RED_PATH2
                         elif self.tilemap.get_tile(x2, y) == T_GROUND2: ttype = T_RED_PATH2
                         else: ttype = T_RED_PATH
 
                         self.tilemap.set_tile(x2, y, ttype)
                         x2 -= 1
                     x2 = x + 1
-                    while (x2 < 31) and self.tilemap.get_tile(x2, y) in passable:
+                    while (x2 < 32) and self.tilemap.get_tile(x2, y) in passable:
                         if   self.tilemap.get_tile(x2, y) in [T_BLU_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
                         elif self.tilemap.get_tile(x2, y) in [T_BLU_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
+                        elif self.tilemap.get_tile(x2, y) == T_RED_PATH2: ttype = T_RED_PATH2
                         elif self.tilemap.get_tile(x2, y) == T_GROUND2: ttype = T_RED_PATH2
                         else: ttype = T_RED_PATH
 
@@ -493,15 +608,17 @@ class PegGameMode(Mode):
                     while (y2 > 0) and self.tilemap.get_tile(x, y2) in passable:
                         if   self.tilemap.get_tile(x, y2) in [T_BLU_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
                         elif self.tilemap.get_tile(x, y2) in [T_BLU_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
+                        elif self.tilemap.get_tile(x, y2) == T_RED_PATH2: ttype = T_RED_PATH2
                         elif self.tilemap.get_tile(x, y2) == T_GROUND2: ttype = T_RED_PATH2
                         else: ttype = T_RED_PATH
 
                         self.tilemap.set_tile(x, y2, ttype)
                         y2 -= 1
                     y2 = y + 1
-                    while (y2 < 31) and self.tilemap.get_tile(x, y2) in passable:
+                    while (y2 < 32) and self.tilemap.get_tile(x, y2) in passable:
                         if   self.tilemap.get_tile(x, y2) in [T_BLU_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
                         elif self.tilemap.get_tile(x, y2) in [T_BLU_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
+                        elif self.tilemap.get_tile(x, y2) == T_RED_PATH2: ttype = T_RED_PATH2
                         elif self.tilemap.get_tile(x, y2) == T_GROUND2: ttype = T_RED_PATH2
                         else: ttype = T_RED_PATH
 
@@ -566,26 +683,33 @@ class PegGameMode(Mode):
         self.red_image.blit(self.tileset.image, (icon3pos, icon_y) , rect)
         self.blu_image.blit(self.tileset.image, (icon3pos+3, icon_y+3) , rect)
 
-        #self.fill(
-        #TODO: THIS
-        #TODO: THIS x2
-        #TODO: THIS x3
-        #TODO: SRSLY DONT FORGET
+        #TODO: Add text
 
     def _end_turn(self):
         self.turn += 1
         self.turn_player ^= 1
 
-        self.red_charge_wall  = min(self.red_charge_wall  + 1, self.CHARGE_WALL )
-        self.red_charge_floor = min(self.red_charge_floor + 1, self.CHARGE_FLOOR)
+        if self.turn_player == 0:
+            self.red_charge_wall  = min(self.red_charge_wall  + 1, self.CHARGE_WALL )
+            self.red_charge_floor = min(self.red_charge_floor + 1, self.CHARGE_FLOOR)
 
-        self.blu_charge_wall  = min(self.blu_charge_wall  + 1, self.CHARGE_WALL )
-        self.blu_charge_floor = min(self.blu_charge_floor + 1, self.CHARGE_FLOOR)
+            self.blu_charge_wall  = min(self.blu_charge_wall  + 1, self.CHARGE_WALL )
+            self.blu_charge_floor = min(self.blu_charge_floor + 1, self.CHARGE_FLOOR)
 
         self._cast_paths()
         self._update_status()
 
     def run(self, delta_time):
+        if self.quit_popup:
+            if   self.parent.key_just_pressed("escape"): self.quit_popup = False
+            elif self.parent.key_just_pressed("y"): self.parent.set_mode(MenuMode())
+            #elif self.parent.key_just_pressed("y"): self.parent.running = False
+            return
+
+        if self.parent.key_just_pressed("escape"):
+            self.quit_popup = True
+            return
+
         tx = self.parent.mouse_pos[0] // 24
         ty = self.parent.mouse_pos[1] // 24
         if self.parent.mouse_pressed("left"):
@@ -605,6 +729,13 @@ class PegGameMode(Mode):
         if self.parent.key_pressed("left"): self.blu_cursor[0] -= 1
         if self.parent.key_pressed("right"): self.blu_cursor[0] += 1
 
+        if self.parent.key_just_pressed("r") and self.turn == 0:
+            self._generate_map()
+
+        if self.parent.key_just_pressed("~"):
+            t = raw_input(">>> ")
+            exec(t)
+
         immutable_tiles = [
             T_RED_BASE, T_RED_PEG,
             T_BLU_BASE, T_BLU_PEG,
@@ -615,7 +746,7 @@ class PegGameMode(Mode):
         if self.turn_player == 0:
             rc = self.red_cursor
             if self.parent.key_just_pressed("c"):
-                if self.tilemap.get_tile(rc[0], rc[1]) == T_RED_PATH:
+                if self.tilemap.get_tile(rc[0], rc[1]) in [T_RED_PATH, T_RED_PATH2]:
                     self.tilemap.set_tile(rc[0], rc[1], T_RED_PEG)
                     self._end_turn()
 
@@ -637,7 +768,7 @@ class PegGameMode(Mode):
         if self.turn_player == 1:
             bc = self.blu_cursor
             if self.parent.key_just_pressed("KP1"):
-                if self.tilemap.get_tile(bc[0], bc[1]) == T_BLU_PATH:
+                if self.tilemap.get_tile(bc[0], bc[1]) in [T_BLU_PATH, T_BLU_PATH2]:
                     self.tilemap.set_tile(bc[0], bc[1], T_BLU_PEG)
                     self._end_turn()
 
@@ -652,7 +783,7 @@ class PegGameMode(Mode):
                 if self.blu_charge_floor == self.CHARGE_FLOOR:
                     if self.tilemap.get_tile(bc[0], bc[1]) not in immutable_tiles:
                         self.tilemap.set_tile(bc[0], bc[1], T_GROUND2)
-                        self.blu_charge_wall = -1
+                        self.blu_charge_floor = -1
                         self._end_turn()
 
     def render(self, surface):
@@ -672,11 +803,6 @@ class PegGameMode(Mode):
             #Render BLU cursor
             surface.blit(self.tileset.image, pos2, rect2)
 
-        font = pygame.font.Font(None, 24)
-        text = font.render("Cell types:", 1, (155, 155, 155))
-        textpos = text.get_rect(left=8,top=16*16)
-        surface.blit(text, textpos)
-
         surface.blit(self.red_image, (0, 0))
         blu_status_pos = (
             768 - self.blu_image.get_width(),
@@ -684,10 +810,16 @@ class PegGameMode(Mode):
         )
         surface.blit(self.blu_image, blu_status_pos)
 
+        if self.quit_popup:
+            pos = (
+                (surface.get_width() - self.quit_image.get_width()) / 2,
+                (surface.get_height() - self.quit_image.get_height()) / 2,
+            )
+            surface.blit(self.quit_image, pos)
 
 class PegGame(Game):
     def start(self):
-        self.set_mode(PegGameMode())
+        self.set_mode(MenuMode())
 
 if __name__ == '__main__':
     #game = TestGame()
