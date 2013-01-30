@@ -83,7 +83,7 @@ class InstructionsMode(Mode):
 
         lines = [
             "The goal of this game is to place a peg of your own as close to the goal as possible",
-            "and prevent the enemy from doing so",
+            "and prevent the enemy from doing so in subsequent 5 turns",
             "",
             "Rules:",
             "1. You can only place your pegs in direct line of sight from one of your pegs",
@@ -166,9 +166,9 @@ class PegGameMode(Mode):
                     tiles[x][y] = T_OBSTACLE
                 elif (x + (32-y) <= 5):
                     tiles[x][y] = T_OBSTACLE
-                elif (x == 0) and (y == 19):
+                elif (x == 0) and (y == 21):
                     tiles[x][y] = T_RED_BASE
-                elif (x == 32 - 19) and (y == 31):
+                elif (x == 32 - 21) and (y == 31):
                     tiles[x][y] = T_BLU_BASE
                 elif (x == 30) and (y == 1):
                     tiles[x][y] = T_GOAL
@@ -185,16 +185,16 @@ class PegGameMode(Mode):
                 if (x + y <= 15) or ((32-x) + (32-y) <= 15): continue
                 elif (x + (32-y) <= 5): continue
 
-                c = 0
+                obstacle_count = 0
                 for (mx, my) in [(1, -1), (1, 0), (1, 1), (0, -1), (0, 1), (-1, -1), (-1, 0), (-1, 1)]:
-                    c += int(oldmap[x+mx][y+my] == T_OBSTACLE)
-                c2 = 8 - c
+                    obstacle_count += int(oldmap[x+mx][y+my] == T_OBSTACLE)
+                floor_count = 8 - obstacle_count
 
                 if oldmap[x][y] == T_OBSTACLE:
-                    if random.randint(0, c2 + 0) <= 1:
+                    if random.randint(0, floor_count + 0) <= 1:
                         tiles[x][y] = T_GROUND
                 elif oldmap[x][y] == T_GROUND:
-                    if random.randint(0, c + 4) == 0:
+                    if random.randint(0, obstacle_count + 4) == 0:
                         tiles[x][y] = T_OBSTACLE
 
         self.tilemap.from_list(tiles)
@@ -273,9 +273,9 @@ class PegGameMode(Mode):
         self.blu_image.fill(black, (3, 3, 8*24, 4*24))
 
         icons = [
-            [icon1pos, 1, 1, 1],
-            [icon2pos, self.red_charge_wall, self.blu_charge_wall, self.CHARGE_WALL],
-            [icon3pos, self.red_charge_floor, self.blu_charge_floor, self.CHARGE_FLOOR],
+            [icon1pos, 1, 1, 1, T_ICON_RED_PEG, T_ICON_BLU_PEG],
+            [icon2pos, self.red_charge_wall, self.blu_charge_wall, self.CHARGE_WALL, T_ICON_OBSTACLE, T_ICON_OBSTACLE],
+            [icon3pos, self.red_charge_floor, self.blu_charge_floor, self.CHARGE_FLOOR, T_ICON_GROUND, T_ICON_GROUND],
         ]
 
         for icon in icons:
@@ -296,20 +296,23 @@ class PegGameMode(Mode):
             self.blu_image.fill(blu_color, (icon[0] - 2 + 3, blu_y + 3, 28, blu_h))
             self.blu_image.fill(black, (icon[0] + 3, icon_y + 3, 24, 24))
 
-        rect = self.tileset.get_tile_rect(T_ICON_RED_PEG)
-        self.red_image.blit(self.tileset.image, (icon1pos, icon_y) , rect)
-        rect = self.tileset.get_tile_rect(T_ICON_BLU_PEG)
-        self.blu_image.blit(self.tileset.image, (icon1pos+3, icon_y+3) , rect)
+            rect = self.tileset.get_tile_rect(icon[4])
+            self.red_image.blit(self.tileset.image, (icon[0], icon_y) , rect)
+            rect = self.tileset.get_tile_rect(icon[5])
+            self.blu_image.blit(self.tileset.image, (icon[0]+3, icon_y+3) , rect)
 
-        rect = self.tileset.get_tile_rect(T_ICON_OBSTACLE)
-        self.red_image.blit(self.tileset.image, (icon2pos, icon_y) , rect)
-        self.blu_image.blit(self.tileset.image, (icon2pos+3, icon_y+3) , rect)
+        font = pygame.font.Font(None, 32)
 
-        rect = self.tileset.get_tile_rect(T_ICON_GROUND)
-        self.red_image.blit(self.tileset.image, (icon3pos, icon_y) , rect)
-        self.blu_image.blit(self.tileset.image, (icon3pos+3, icon_y+3) , rect)
+        red_text = font.render("Player 1", 1, red_red)
+        red_textpos = red_text.get_rect(left=10, top=10)
 
-        #TODO: Add text
+        blu_text = font.render("Player 2", 1, blu_blue)
+        blu_textpos = blu_text.get_rect(left=13, top=13)
+
+        self.red_image.blit(red_text, red_textpos)
+        self.blu_image.blit(blu_text, blu_textpos)
+
+        #TODO: Add key captions
 
     def _end_turn(self):
         self.turn += 1
@@ -350,10 +353,20 @@ class PegGameMode(Mode):
         if self.parent.key_pressed("a"): self.red_cursor[0] -= 1
         if self.parent.key_pressed("d"): self.red_cursor[0] += 1
 
+        if self.red_cursor[1] < 0: self.red_cursor[1] = 0
+        if self.red_cursor[1] > 31: self.red_cursor[1] = 31
+        if self.red_cursor[0] < 0: self.red_cursor[0] = 0
+        if self.red_cursor[0] > 31: self.red_cursor[0] = 31
+
         if self.parent.key_pressed("up"): self.blu_cursor[1] -= 1
         if self.parent.key_pressed("down"): self.blu_cursor[1] += 1
         if self.parent.key_pressed("left"): self.blu_cursor[0] -= 1
         if self.parent.key_pressed("right"): self.blu_cursor[0] += 1
+
+        if self.blu_cursor[1] < 0: self.blu_cursor[1] = 0
+        if self.blu_cursor[1] > 31: self.blu_cursor[1] = 31
+        if self.blu_cursor[0] < 0: self.blu_cursor[0] = 0
+        if self.blu_cursor[0] > 31: self.blu_cursor[0] = 31
 
         if self.parent.key_just_pressed("r") and self.turn == 0:
             self._generate_map()

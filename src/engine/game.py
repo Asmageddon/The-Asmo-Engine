@@ -26,6 +26,9 @@ class Game(object):
         self.key_status = defaultdict(lambda: False)
         self.changed_key_status = {}
 
+        #Keys pressed this frame, in order, for text input purposes
+        self.key_input = []
+
         #Mouse status variables
         self.mouse_status = defaultdict(lambda: False)
         self.changed_mouse_status = {}
@@ -163,6 +166,8 @@ class Game(object):
                 #Update the key status dictionaries
                 self.changed_key_status[event.key] = True
                 self.key_status[event.key] = True
+
+                self.key_input.append(event.key)
 
                 #Some alt+key special hotkeys
                 if pygame.key.get_mods() & pygame.KMOD_ALT:
