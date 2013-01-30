@@ -46,6 +46,10 @@ class Game(object):
 
         self.current_mode = mode
 
+        #Initialize frame variable of given mode so users don't have to call Mode.__init__ (don't like this ugly Python inheritance :<)
+        if "frame" not in self.current_mode.__dict__:
+            self.current_mode.frame = 0
+
         if self.running:
             self.current_mode.start()
 
@@ -64,6 +68,7 @@ class Game(object):
 
             #Run a frame of the current mode and render
             self.current_mode.run(1.0 / self.fps) #For now let's just pretend the fps is perfect
+            self.current_mode.frame += 1 #Increment frame count of active mode
             self.current_mode.render(self.screen)
             pygame.display.flip()
 
@@ -157,6 +162,7 @@ class Game(object):
     def check_events(self):
         self.changed_key_status = {}
         self.changed_mouse_status = {}
+        self.key_input = []
 
         for event in pygame.event.get():
             if   event.type == pygame.QUIT:
