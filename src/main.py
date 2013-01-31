@@ -523,6 +523,8 @@ class NetworkConnection(threading.Thread):
                 except:
                     print "Client not connected, connection shut down"
 
+        self.running = True
+
         while self.running:
             if self.socket is None:
                 time.sleep(0.25) #Don't waste CPU cycles
@@ -530,11 +532,20 @@ class NetworkConnection(threading.Thread):
 
             #Accept incoming data and push it onto the queue
             data = self.socket.recv(4096)
-            if data:
-                self.data_in.append(data)
-            else:
+            if not data:
                 self.socket.close()
                 self.running = False
+                continue
+
+            if "\n" in data:
+                data = data.split("\n")
+            else:
+                data = [data]
+
+            for d in data:
+                if d:
+                    print d
+                    self.data_in.append(d)
 
         print "Shut down networking thread"
 
@@ -568,7 +579,7 @@ class NetworkConnection(threading.Thread):
             yield data
 
     def send(self, data):
-        self.socket.send(data)
+        self.socket.send(data + "\n")
 
 class LobbyMode(Mode):
     def __init__(self, host = False):
@@ -679,6 +690,7 @@ class PegMultiplayerMode(PegMode):
                 tiles = []
                 for y in range(32):
                     row = params[y * 32 : y * 32 + 32]
+                    print y, row
                     row = map(lambda s: int(s), row)
                     tiles.append(row)
                 self.tilemap.from_list(tiles)
