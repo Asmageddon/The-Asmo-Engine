@@ -293,6 +293,19 @@ class PegMode(Mode):
 
         return False
 
+    def place_floor(self, player, x, y):
+        charge = (self.red_charge_floor, self.blu_charge_floor)[player]
+        if charge == CHARGE_FLOOR:
+            if self.tilemap.get_tile(x, y) not in IMMUTABLE_TILES:
+                self.tilemap.set_tile(x, y, T_OBSTACLE2)
+                if player == P_BLU: self.blu_charge_floor = -1
+                else: self.blu_charge_floor = -1
+
+                self._end_turn()
+                return True
+
+        return False
+
     def _update_status(self):
         icon_y = int(2.5 * 24)
         icon1pos = int(3.5 * 24)
@@ -455,12 +468,7 @@ class PegLocalMode(PegMode):
                 self.place_obstacle(P_RED, rc[0], rc[1])
 
             if self.parent.key_just_pressed("b"):
-                if self.red_charge_floor == CHARGE_FLOOR:
-                    if self.tilemap.get_tile(rc[0], rc[1]) not in IMMUTABLE_TILES:
-                        self.tilemap.set_tile(rc[0], rc[1], T_FLOOR2)
-                        self.red_charge_floor = -1
-                        self._end_turn()
-
+                self.place_floor(P_RED, rc[0], rc[1])
 
         if self.turn_player == P_BLU:
             bc = self.blu_cursor
@@ -471,11 +479,7 @@ class PegLocalMode(PegMode):
                 self.place_obstacle(P_BLU, bc[0], bc[1])
 
             if self.parent.key_just_pressed("KP3"):
-                if self.blu_charge_floor == CHARGE_FLOOR:
-                    if self.tilemap.get_tile(bc[0], bc[1]) not in IMMUTABLE_TILES:
-                        self.tilemap.set_tile(bc[0], bc[1], T_FLOOR2)
-                        self.blu_charge_floor = -1
-                        self._end_turn()
+                self.place_floor(P_BLU, bc[0], bc[1])
 
 import threading
 import socket, select
@@ -525,6 +529,8 @@ class NetworkConnection(threading.Thread):
 
         self.running = True
 
+        prev_data = ""
+
         while self.running:
             if self.socket is None:
                 time.sleep(0.25) #Don't waste CPU cycles
@@ -537,14 +543,22 @@ class NetworkConnection(threading.Thread):
                 self.running = False
                 continue
 
-            if "\n" in data:
+            #Handle stuff that got broken into multiple parts
+            # a.k.a. sending the map via one .send()
+            if not data.endswith("\n"):
+                prev_data += data
+                continue
+            elif prev_data != "":
+                data = prev_data + data
+                prev_data = ""
+
+            if "\n" in data[:-1]:
                 data = data.split("\n")
             else:
                 data = [data]
 
             for d in data:
                 if d:
-                    print d
                     self.data_in.append(d)
 
         print "Shut down networking thread"
@@ -657,8 +671,27 @@ class PegMultiplayerMode(PegMode):
 
         self.connection.send("MAP %s" % map_data)
 
+    def place_peg(self, player, x, y):
+        success = PegMode.place_peg(self, player, x, y)
+        if success:
+            self.connection.send("PLACE_PEG %i %i" % (x, y))
+            self.connection.send("END_TURN")
+
+    def place_floor(self, player, x, y):
+        success = PegMode.place_floor(self, player, x, y)
+        if success:
+            self.connection.send("PLACE_FLOOR %i %i" % (x, y))
+            self.connection.send("END_TURN")
+
+    def place_obstacle(self, player, x, y):
+        success = PegMode.place_obstacle(self, player, x, y)
+        if success:
+            self.connection.send("PLACE_OBSTACLE %i %i" % (x, y))
+            self.connection.send("END_TURN")
+
     def _handle_input(self):
         for data in self.connection.receive():
+            data = data.replace("\n", "")
             command, _, params = data.partition(" ")
             params = params.split(" ")
             if command.startswith("PLACE_"):
@@ -666,14 +699,19 @@ class PegMultiplayerMode(PegMode):
                     tile = T_RED_PEG if self.side == 1 else T_BLU_PEG
                 elif command == "PLACE_OBSTACLE":
                     tile = T_OBSTACLE2
+                    if self.side == P_RED: self.blu_charge_wall = -1
+                    else: self.red_charge_wall = -1
                 elif command == "PLACE_FLOOR":
                     tile = T_FLOOR2
+                    if self.side == P_RED: self.blu_charge_floor = -1
+                    else: self.red_charge_floor = -1
 
                 x = int(params[0])
                 y = int(params[1])
 
                 self.tilemap.set_tile(x, y, tile)
             elif command == "END_TURN":
+                print "Ending turn"
                 self._end_turn()
             elif command == "MOVE_CURSOR":
                 x = int(params[0])
@@ -690,7 +728,6 @@ class PegMultiplayerMode(PegMode):
                 tiles = []
                 for y in range(32):
                     row = params[y * 32 : y * 32 + 32]
-                    print y, row
                     row = map(lambda s: int(s), row)
                     tiles.append(row)
                 self.tilemap.from_list(tiles)
@@ -720,11 +757,7 @@ class PegMultiplayerMode(PegMode):
             if self.turn_player == self.side:
                 rc = self.red_cursor
                 if self.parent.key_just_pressed("c"):
-                    if self.tilemap.get_tile(rc[0], rc[1]) in [T_RED_PATH, T_RED_PATH2]:
-                        self.tilemap.set_tile(rc[0], rc[1], T_RED_PEG)
-                        self.connection.send("PLACE_PEG %i %i" % (rc[0], rc[1]))
-                        self.connection.send("END_TURN")
-                        self._end_turn()
+                    self.place_peg(P_RED, rc[0], rc[1])
 
                 if self.parent.key_just_pressed("v"):
                     if self.red_charge_wall == CHARGE_OBSTACLE:
