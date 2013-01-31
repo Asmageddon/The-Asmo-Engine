@@ -66,6 +66,9 @@ PASSABLE_TILES = [
 CHARGE_OBSTACLE = 3
 CHARGE_FLOOR = 5
 
+P_RED = 0
+P_BLU = 1
+
 class MenuMode(Mode):
     def start(self):
         self.visuals = pygame.Surface((768, 768))
@@ -168,7 +171,7 @@ class PegMode(Mode):
         font = pygame.font.Font(None, 32)
 
         text = font.render("Really quit (Y/Esc)?", 1, (230, 230, 50))
-        textpos = text.get_rect()#left=8,top=16*16)
+        textpos = text.get_rect()
         self.quit_image = pygame.Surface((textpos[2], textpos[3]))
         self.quit_image.blit(text, textpos)
 
@@ -230,39 +233,65 @@ class PegMode(Mode):
         #Recalculate paths
         for x in range(32):
             for y in range(32):
-                if self.tilemap.get_tile(x, y) in [T_BLU_BASE, T_BLU_PEG]:
-                    #Holy mother of god what is this black voodoo
-                    for direction in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                        x2 = x + direction[0]
-                        y2 = y + direction[1]
-                        f_PASSABLE_TILES = lambda x, y: self.tilemap.get_tile(x2, y2) in PASSABLE_TILES
-                        while (x2 >= 0) and (x2 < 32) and (y2 >= 0) and (y2 < 32) and f_PASSABLE_TILES(x2, y2):
-                            if   self.tilemap.get_tile(x2, y2) in [T_RED_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
-                            elif self.tilemap.get_tile(x2, y2) in [T_RED_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
-                            elif self.tilemap.get_tile(x2, y2) == T_FLOOR2: ttype = T_BLU_PATH2
-                            elif self.tilemap.get_tile(x2, y2) == T_BLU_PATH2: ttype = T_BLU_PATH2
-                            else: ttype = T_BLU_PATH
+                d = [
+                    {
+                        "own_pegs":  [T_BLU_BASE, T_BLU_PEG],
+                        "enemy_path":  [T_RED_PATH, T_MIX_PATH],
+                        "enemy_path2": [T_RED_PATH2, T_MIX_PATH2],
+                        "own_path": T_BLU_PATH,
+                        "own_path2": T_BLU_PATH2,
+                    },
+                    {
+                        "own_pegs":  [T_RED_BASE, T_RED_PEG],
+                        "enemy_path":  [T_BLU_PATH, T_MIX_PATH],
+                        "enemy_path2": [T_BLU_PATH2, T_MIX_PATH2],
+                        "own_path": T_RED_PATH,
+                        "own_path2": T_RED_PATH2,
+                    }
+                ]
+                for dataset in d:
+                    if self.tilemap.get_tile(x, y) in dataset["own_pegs"]:
+                        for direction in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            x2 = x + direction[0]
+                            y2 = y + direction[1]
+                            f_passable_tiles = lambda x, y: self.tilemap.get_tile(x2, y2) in PASSABLE_TILES
+                            while (x2 >= 0) and (x2 < 32) and (y2 >= 0) and (y2 < 32) and f_passable_tiles(x2, y2):
+                                if   self.tilemap.get_tile(x2, y2) in dataset["enemy_path"]:  ttype = T_MIX_PATH
+                                elif self.tilemap.get_tile(x2, y2) in dataset["enemy_path2"]: ttype = T_MIX_PATH2
+                                elif self.tilemap.get_tile(x2, y2) == T_FLOOR2: ttype = dataset["own_path2"]
+                                elif self.tilemap.get_tile(x2, y2) == dataset["own_path2"]: ttype = dataset["own_path2"]
+                                else: ttype = dataset["own_path"]
 
-                            self.tilemap.set_tile(x2, y2, ttype)
-                            x2 += direction[0]
-                            y2 += direction[1]
+                                self.tilemap.set_tile(x2, y2, ttype)
+                                x2 += direction[0]
+                                y2 += direction[1]
 
-                if self.tilemap.get_tile(x, y) in [T_RED_BASE, T_RED_PEG]:
-                    #Holy mother of god what is this white voodoo
-                    for direction in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                        x2 = x + direction[0]
-                        y2 = y + direction[1]
-                        f_PASSABLE_TILES = lambda x, y: self.tilemap.get_tile(x2, y2) in PASSABLE_TILES
-                        while (x2 >= 0) and (x2 < 32) and (y2 >= 0) and (y2 < 32) and f_PASSABLE_TILES(x2, y2):
-                            if   self.tilemap.get_tile(x2, y2) in [T_BLU_PATH, T_MIX_PATH]: ttype = T_MIX_PATH
-                            elif self.tilemap.get_tile(x2, y2) in [T_BLU_PATH2, T_MIX_PATH2]: ttype = T_MIX_PATH2
-                            elif self.tilemap.get_tile(x2, y2) == T_FLOOR2: ttype = T_RED_PATH2
-                            elif self.tilemap.get_tile(x2, y2) == T_RED_PATH2: ttype = T_RED_PATH2
-                            else: ttype = T_RED_PATH
+    def place_peg(self, player, x, y):
+        paths = (
+            [T_RED_PATH, T_RED_PATH2],
+            [T_BLU_PATH, T_BLU_PATH2]
+        )[player]
+        peg = (T_RED_PEG, T_BLU_PEG)[player]
 
-                            self.tilemap.set_tile(x2, y2, ttype)
-                            x2 += direction[0]
-                            y2 += direction[1]
+        if self.tilemap.get_tile(x, y) in paths:
+            self.tilemap.set_tile(x, y, peg)
+            self._end_turn()
+            return True
+
+        return False
+
+    def place_obstacle(self, player, x, y):
+        charge = (self.red_charge_wall, self.blu_charge_wall)[player]
+        if charge == CHARGE_OBSTACLE:
+            if self.tilemap.get_tile(x, y) not in IMMUTABLE_TILES:
+                self.tilemap.set_tile(x, y, T_OBSTACLE2)
+                if player == P_RED: self.red_charge_wall = -1
+                else: self.blu_charge_wall = -1
+
+                self._end_turn()
+                return True
+
+        return False
 
     def _update_status(self):
         icon_y = int(2.5 * 24)
@@ -417,19 +446,13 @@ class PegLocalMode(PegMode):
             t = raw_input(">>> ")
             exec(t)
 
-        if self.turn_player == 0:
+        if self.turn_player == P_RED:
             rc = self.red_cursor
             if self.parent.key_just_pressed("c"):
-                if self.tilemap.get_tile(rc[0], rc[1]) in [T_RED_PATH, T_RED_PATH2]:
-                    self.tilemap.set_tile(rc[0], rc[1], T_RED_PEG)
-                    self._end_turn()
+                self.place_peg(P_RED, rc[0], rc[1])
 
             if self.parent.key_just_pressed("v"):
-                if self.red_charge_wall == CHARGE_OBSTACLE:
-                    if self.tilemap.get_tile(rc[0], rc[1]) not in IMMUTABLE_TILES:
-                        self.tilemap.set_tile(rc[0], rc[1], T_OBSTACLE2)
-                        self.red_charge_wall = -1
-                        self._end_turn()
+                self.place_obstacle(P_RED, rc[0], rc[1])
 
             if self.parent.key_just_pressed("b"):
                 if self.red_charge_floor == CHARGE_FLOOR:
@@ -439,19 +462,13 @@ class PegLocalMode(PegMode):
                         self._end_turn()
 
 
-        if self.turn_player == 1:
+        if self.turn_player == P_BLU:
             bc = self.blu_cursor
             if self.parent.key_just_pressed("KP1"):
-                if self.tilemap.get_tile(bc[0], bc[1]) in [T_BLU_PATH, T_BLU_PATH2]:
-                    self.tilemap.set_tile(bc[0], bc[1], T_BLU_PEG)
-                    self._end_turn()
+                self.place_peg(P_BLU, bc[0], bc[1])
 
             if self.parent.key_just_pressed("KP2"):
-                if self.blu_charge_wall == CHARGE_OBSTACLE:
-                    if self.tilemap.get_tile(bc[0], bc[1]) not in IMMUTABLE_TILES:
-                        self.tilemap.set_tile(bc[0], bc[1], T_OBSTACLE2)
-                        self.blu_charge_wall = -1
-                        self._end_turn()
+                self.place_obstacle(P_BLU, bc[0], bc[1])
 
             if self.parent.key_just_pressed("KP3"):
                 if self.blu_charge_floor == CHARGE_FLOOR:
@@ -476,13 +493,15 @@ class NetworkConnection(threading.Thread):
 
         if self.host:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.server_socket.bind((socket.gethostname(), 39612))
+            self.server_socket.bind(("0.0.0.0", 39612))
             #Allow reusing the socket immediately (on Linux at least)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.socket = None
         else:
             self.server_socket = None
             self.socket = None
+
+        self.running = True
 
     def connect(self, host_ip):
         if self.host: return
@@ -494,16 +513,17 @@ class NetworkConnection(threading.Thread):
         print "Connected to server"
 
     def run(self):
-        running = True
-
         if self.host:
             self.server_socket.listen(5)
-            while self.socket is None and running:
-                client, address = self.server_socket.accept()
-                self.socket = client
-                print "Client connected"
+            while self.socket is None and self.running:
+                try:
+                    client, address = self.server_socket.accept()
+                    self.socket = client
+                    print "Client connected"
+                except:
+                    print "Client not connected, connection shut down"
 
-        while running:
+        while self.running:
             if self.socket is None:
                 time.sleep(0.25) #Don't waste CPU cycles
                 continue
@@ -514,7 +534,9 @@ class NetworkConnection(threading.Thread):
                 self.data_in.append(data)
             else:
                 self.socket.close()
-                running = False
+                self.running = False
+
+        print "Shut down networking thread"
 
     def connected(self):
         return self.socket is not None
@@ -523,12 +545,20 @@ class NetworkConnection(threading.Thread):
         self.running = False
 
         if self.server_socket is not None:
+            self.server_socket.shutdown(socket.SHUT_RDWR)
             self.server_socket.close()
+            self.server_socket = None
             print "Closed server socket"
 
         if self.socket is not None:
+            try:
+                self.socket.shutdown(socket.SHUT_RDWR)
+            except:
+                pass #Might be closed by the other endpoint already
             self.socket.close()
+            self.socket = None
             print "Closed client socket"
+
 
     def receive(self):
         """Usage: for data in connection.receive(): blah blah"""
@@ -552,8 +582,8 @@ class LobbyMode(Mode):
 
     def run(self, delta_time):
         if self.parent.key_just_pressed("escape"):
-            self.parent.set_mode(MenuMode())
             self.connection.close()
+            self.parent.set_mode(MenuMode())
 
         if self.host:
             if self.connection.connected():
@@ -572,10 +602,8 @@ class LobbyMode(Mode):
                     self.parent.set_mode(PegMultiplayerMode(self.connection, 1))
                 except:
                     self.ip_input = ""
-            elif char in range(ord('a'), ord('z')) + range(ord('0'), ord('9')) + [ord('.')]:
+            elif char in range(ord('0'), ord('9')+1) + [ord('.')]: #Sowwy, IPv4 only
                 self.ip_input += chr(char)
-
-            print char
 
     def render(self, surface):
         font = pygame.font.Font(None, 32)
@@ -655,6 +683,7 @@ class PegMultiplayerMode(PegMode):
                     tiles.append(row)
                 self.tilemap.from_list(tiles)
             elif command == "DISCONNECT":
+                self.connection.close()
                 self.parent.set_mode(MenuMode())
 
         if self.turn == 0 and self.parent.key_just_pressed("r"):
@@ -745,9 +774,11 @@ class PegMultiplayerMode(PegMode):
                             self._end_turn()
 
     def stop(self):
+        #We're doing this in stop so it gets done correctly when game is quit via Esc, Y
         if self.connection.connected():
+            print "Sending disconnect signal"
             self.connection.send("DISCONNECT")
-        self.connection.close()
+            self.connection.close()
 
 class PegGame(Game):
     def start(self):
