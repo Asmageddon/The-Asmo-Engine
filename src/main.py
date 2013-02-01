@@ -602,6 +602,8 @@ class NetworkConnection(threading.Thread):
         print "Connected to server"
 
     def run(self):
+        self.running = True
+
         if self.host:
             self.server_socket.listen(5)
             while self.socket is None and self.running:
@@ -612,7 +614,6 @@ class NetworkConnection(threading.Thread):
                 except:
                     print "Client not connected, connection shut down"
 
-        self.running = True
 
         prev_data = ""
 
@@ -724,7 +725,7 @@ class LobbyMode(Mode):
         surface.fill((0, 0, 0))
 
         if self.host:
-            text = font.render("Waiting for a connection(Esc to cancel)...", 1, (230, 230, 50))
+            text = font.render("Waiting for a connection on port %i (Esc to cancel)..." % GAME_PORT, 1, (230, 230, 50))
             textpos = text.get_rect(center=(384, 384))
             surface.blit(text, textpos)
         else:
