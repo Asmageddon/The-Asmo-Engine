@@ -891,6 +891,7 @@ class PegGame(Game):
     def start(self):
         self.fps = 15 #Let's just make moving cursor slower with this...
         self.set_mode(MenuMode())
+        self.set_title("A Game of Pegs for Two")
 
 if __name__ == '__main__':
     game = PegGame()

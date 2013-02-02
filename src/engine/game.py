@@ -19,10 +19,14 @@ class Game(object):
         self.width=768; self.height=768
         self.screen=pygame.display.set_mode((self.width,self.height))
 
-        pygame.display.set_caption("TGWACAFT")
+        pygame.display.set_caption("A game")
 
         self.key = Keyboard()
         self.mouse = Mouse()
+
+    def set_title(self, caption):
+        """Set window title to 'caption'"""
+        pygame.display.set_caption(caption)
 
     def start(self): pass
     def stop(self): pass
