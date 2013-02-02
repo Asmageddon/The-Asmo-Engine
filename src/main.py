@@ -947,6 +947,7 @@ class PegGame(Game):
     def start(self):
         self.fps = 15 #Let's just make moving cursor slower with this...
         self.set_mode(MenuMode())
+        pygame.display.set_icon(utils.load_image("icon32px.png"))
         self.set_title("A Game of Pegs for Two")
 
 if __name__ == '__main__':
