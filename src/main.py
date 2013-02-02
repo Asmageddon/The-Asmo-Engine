@@ -850,22 +850,10 @@ class PegMultiplayerMode(PegMode):
                     self.place_peg(P_RED, rc[0], rc[1])
 
                 if keyboard.just_pressed("v"):
-                    if self.red_charge_wall == CHARGE_OBSTACLE:
-                        if self.tilemap.get_tile(rc[0], rc[1]) not in IMMUTABLE_TILES:
-                            self.tilemap.set_tile(rc[0], rc[1], T_OBSTACLE2)
-                            self.connection.send("PLACE_OBSTACLE %i %i" % (rc[0], rc[1]))
-                            self.connection.send("END_TURN")
-                            self.red_charge_wall = -1
-                            self._end_turn()
+                    self.place_obstacle(P_RED, rc[0], rc[1])
 
                 if keyboard.just_pressed("b"):
-                    if self.red_charge_floor == CHARGE_FLOOR:
-                        if self.tilemap.get_tile(rc[0], rc[1]) not in IMMUTABLE_TILES:
-                            self.tilemap.set_tile(rc[0], rc[1], T_FLOOR2)
-                            self.connection.send("PLACE_FLOOR %i %i" % (rc[0], rc[1]))
-                            self.connection.send("END_TURN")
-                            self.red_charge_floor = -1
-                            self._end_turn()
+                    self.place_floor(P_RED, rc[0], rc[1])
         else:
             old_cursor = self.blu_cursor[:]
             if keyboard.pressed('w'): self.blu_cursor[1] -= 1
@@ -884,29 +872,13 @@ class PegMultiplayerMode(PegMode):
             if self.turn_player == self.side:
                 bc = self.blu_cursor
                 if keyboard.just_pressed("c"):
-                    if self.tilemap.get_tile(bc[0], bc[1]) in [T_BLU_PATH, T_BLU_PATH2]:
-                        self.tilemap.set_tile(bc[0], bc[1], T_BLU_PEG)
-                        self.connection.send("PLACE_PEG %i %i" % (bc[0], bc[1]))
-                        self.connection.send("END_TURN")
-                        self._end_turn()
+                    self.place_peg(P_BLU, bc[0], bc[1])
 
                 if keyboard.just_pressed("v"):
-                    if self.blu_charge_wall == CHARGE_OBSTACLE:
-                        if self.tilemap.get_tile(bc[0], bc[1]) not in IMMUTABLE_TILES:
-                            self.tilemap.set_tile(bc[0], bc[1], T_OBSTACLE2)
-                            self.connection.send("PLACE_OBSTACLE %i %i" % (bc[0], bc[1]))
-                            self.connection.send("END_TURN")
-                            self.blu_charge_wall = -1
-                            self._end_turn()
+                    self.place_obstacle(P_BLU, bc[0], bc[1])
 
                 if keyboard.just_pressed("b"):
-                    if self.blu_charge_floor == CHARGE_FLOOR:
-                        if self.tilemap.get_tile(bc[0], bc[1]) not in IMMUTABLE_TILES:
-                            self.tilemap.set_tile(bc[0], bc[1], T_FLOOR2)
-                            self.connection.send("PLACE_FLOOR %i %i" % (bc[0], bc[1]))
-                            self.connection.send("END_TURN")
-                            self.blu_charge_floor = -1
-                            self._end_turn()
+                    self.place_floor(P_BLU, bc[0], bc[1])
 
     def stop(self):
         #We're doing this in stop so it gets done correctly when game is quit via Esc, Y
