@@ -65,8 +65,8 @@ PASSABLE_TILES = [
     T_BLU_PATH2, T_RED_PATH2, T_MIX_PATH2,
 ]
 
-CHARGE_OBSTACLE = 5
-CHARGE_FLOOR = 3
+CHARGE_OBSTACLE = 2
+CHARGE_FLOOR = 2
 
 P_RED = 0
 P_BLU = 1
@@ -74,7 +74,10 @@ P_BLU = 1
 RED_RED = (206, 60, 60)
 BLU_BLUE = (60, 60, 206)
 
-PROTECTED_RADIUS = 3
+PROTECTED_RADIUS = 2
+
+MAP_MODE_SYMMETRICAL = 0
+MAP_MODE_ASYMMETRICAL = 1
 
 class MenuMode(Mode):
     def start(self):
@@ -113,8 +116,8 @@ class InstructionsMode(Mode):
         font = pygame.font.Font(None, 24)
 
         lines = [
-            "The goal of this game is to place a peg of your own as close to the goal as possible",
-            "while preventing the enemy from doing so her- or him- self",
+            "The goal of this game is to place your pegs next to 4 different goals(yellow tiles)",
+            "and prevent your enemy from doing so",
             "",
             "Rules:",
             "1. You can only place your pegs in direct line of sight from one of your pegs",
@@ -133,7 +136,8 @@ class InstructionsMode(Mode):
             "Num1/Num2/Num3 - place peg/obstacle/floor respectively, if charged",
             "",
             "Other controls:",
-            "r - generate a new map, only works on the first turn, for balancing purposes",
+            "R - generate a new map, only works on the first turn",
+            "T - generate a new, symmetric map",
             "Esc - quit the game, confirm with 'Y'",
         ]
 
@@ -173,6 +177,8 @@ class PegMode(Mode):
         self.red_charge_floor = 0
         self.blu_charge_wall = 0
         self.blu_charge_floor = 0
+        self.red_points = 0
+        self.blu_points = 0
 
         self.red_image = pygame.Surface((8 * 24 + 3, 4 * 24 + 3))
         self.blu_image = pygame.Surface((8 * 24 + 3, 4 * 24 + 3))
@@ -202,35 +208,49 @@ class PegMode(Mode):
         self.victory_image_blu.fill((0,0,0), textpos)
         self.victory_image_blu.blit(text2, textpos)
 
-    def _generate_map(self):
+    def _generate_map(self, mode = MAP_MODE_ASYMMETRICAL):
         tiles = gen_list2d(32, 32)
 
         density_sectors = [
             [10, 10, 10,  9,  6,  4,  3,  1],
-            [10, 10,  9,  6,  8,  3,  2],
+            [10, 10,  7,  6,  8,  3,  2],
             [10,  9,  3,  5,  2,  3],
             [ 9,  7,  8,  3,  2],
             [ 4,  3,  2,  1],
-            [ 0,  1,  2],
+            [ 0,  1,  6],
             [ 1,  4],
             [ 8]
         ]
+        #Mirror the density sectors
         for y, row in enumerate(density_sectors):
             for x in range(len(row), 8):
                 d = density_sectors[7-x][7-y]
                 density_sectors[y] += [d]
 
+        self.goals = (
+            (30,  1),
+            (16, 15),
+            (10,  8),
+            (31 - 8, 31 - 10),
+            (18,  1),
+            (31 - 1, 31 - 18)
+        )
+        RED_BASE_POS = (0, 21)
+        BLU_BASE_POS = (31 - 21, 31)
+
         for x in range(32):
             for y in range(32):
-                if (x + y <= 15) or ((32-x) + (32-y) <= 15):
+                #Upper left and bottom right fills
+                if (x + y <= 15) or ((31-x) + (31-y) <= 15):
                     tiles[x][y] = T_OBSTACLE
+                #Lower left corner fill
                 elif (x + (32-y) <= 5):
                     tiles[x][y] = T_OBSTACLE
-                elif (x == 0) and (y == 21):
+                elif (x, y) == RED_BASE_POS:
                     tiles[x][y] = T_RED_BASE
-                elif (x == 31 - 21) and (y == 31):
+                elif (x, y) == BLU_BASE_POS:
                     tiles[x][y] = T_BLU_BASE
-                elif (x == 30) and (y == 1):
+                elif (x, y) in self.goals:
                     tiles[x][y] = T_GOAL
                 elif (x > 1) and (y < 30):
                     d = density_sectors[y // 4][x // 4]
@@ -260,10 +280,23 @@ class PegMode(Mode):
                     if random.randint(0, obstacle_count + 10 - d) == 0:
                         tiles[x][y] = T_OBSTACLE
 
-        for x in range(0, 32):
-            for y in range(0, 32 - x):
-                if tiles[x][y] in [T_OBSTACLE, T_FLOOR]:
-                    tiles[31 - y][31 - x] = tiles[x][y]
+        if mode == MAP_MODE_SYMMETRICAL:
+            #Make the map symmetrical
+            for x in range(0, 32):
+                for y in range(0, 32 - x):
+                    if tiles[x][y] in [T_OBSTACLE, T_FLOOR, T_FLOOR2]:
+                        tiles[31 - y][31 - x] = tiles[x][y]
+
+        #Surround the goals with immutable ground tiles
+        for goal in self.goals:
+            gx = goal[0]
+            gy = goal[1]
+            for x in range(gx - PROTECTED_RADIUS, gx + PROTECTED_RADIUS + 1):
+                for y in range(gy - PROTECTED_RADIUS, gy + PROTECTED_RADIUS + 1):
+                    if (x < 0) or (x > 31) or (y < 0) or (y > 31):
+                        continue
+                    elif tiles[x][y] == T_FLOOR:
+                        tiles[x][y] = T_FLOOR2
 
         self.tilemap.from_list(tiles)
 
@@ -328,8 +361,13 @@ class PegMode(Mode):
         return False
 
     def place_obstacle(self, player, x, y):
-        if x > (31 - PROTECTED_RADIUS) and y < PROTECTED_RADIUS:
-            return False
+        for goal in self.goals:
+            gx = goal[0]
+            gy = goal[1]
+            if x in range(gx - PROTECTED_RADIUS, gx + PROTECTED_RADIUS + 1):
+                if y in range(gy - PROTECTED_RADIUS, gy + PROTECTED_RADIUS + 1):
+                    print "f"
+                    return False
 
         charge = (self.red_charge_wall, self.blu_charge_wall)[player]
         if charge == CHARGE_OBSTACLE:
@@ -369,6 +407,22 @@ class PegMode(Mode):
         return False
 
     def _update_status(self):
+        self.red_points = 0
+        self.blu_points = 0
+        for goal_pos in self.goals:
+            red_scored = False
+            blu_scored = False
+            for direction in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                x = goal_pos[0] + direction[0]
+                y = goal_pos[1] + direction[1]
+                tile = self.tilemap.get_tile(x, y)
+                if   tile == T_RED_PEG and not red_scored:
+                    self.red_points += 1
+                    red_scored = True
+                elif tile == T_BLU_PEG and not blu_scored:
+                    self.blu_points += 1
+                    blu_scored = True
+
         icon_y = int(2.5 * 24)
         icon1pos = int(3.5 * 24)
         icon2pos = int(5.0 * 24)
@@ -417,10 +471,10 @@ class PegMode(Mode):
 
         font = pygame.font.Font(None, 32)
 
-        red_text = font.render("Player 1", 1, RED_RED)
+        red_text = font.render("Player 1 - %ipts" % self.red_points, 1, RED_RED)
         red_textpos = red_text.get_rect(left=10, top=10)
 
-        blu_text = font.render("Player 2", 1, BLU_BLUE)
+        blu_text = font.render("Player 2 - %ipts" % self.blu_points, 1, BLU_BLUE)
         blu_textpos = blu_text.get_rect(left=13, top=13)
 
         self.red_image.blit(red_text, red_textpos)
@@ -446,13 +500,8 @@ class PegMode(Mode):
         pass
 
     def run(self, delta_time):
-        goal_pos = (31 - 1, 1)
-        for direction in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            x = goal_pos[0] + direction[0]
-            y = goal_pos[1] + direction[1]
-            tile = self.tilemap.get_tile(x, y)
-            if   tile == T_RED_PEG: self.victorious_side = P_RED
-            elif tile == T_BLU_PEG: self.victorious_side = P_BLU
+        if self.red_points > 3: self.victorious_side = P_RED
+        if self.blu_points > 3: self.victorious_side = P_BLU
 
         if self.victorious_side is not None:
             if keyboard.just_pressed("escape"): self.parent.set_mode(MenuMode())
@@ -469,7 +518,10 @@ class PegMode(Mode):
             self.quit_popup = True
             return
 
-
+        if   keyboard.just_pressed("r") and self.turn == 0:
+            self._generate_map()
+        elif keyboard.just_pressed("t") and self.turn == 0:
+            self._generate_map(mode=MAP_MODE_SYMMETRICAL)
 
         self._handle_input()
 
@@ -537,9 +589,6 @@ class PegLocalMode(PegMode):
         if self.blu_cursor[1] > 31: self.blu_cursor[1] = 31
         if self.blu_cursor[0] < 0: self.blu_cursor[0] = 0
         if self.blu_cursor[0] > 31: self.blu_cursor[0] = 31
-
-        if keyboard.just_pressed("r") and self.turn == 0:
-            self._generate_map()
 
         if keyboard.just_pressed("~"):
             t = raw_input(">>> ")
@@ -746,6 +795,9 @@ class PegMultiplayerMode(PegMode):
 
         self.last_cursor_message = 0
 
+        #Make the multiplayer mode not send first map if not host
+        self.no_map_yet = True
+
     def start(self):
         PegMode.start(self)
 
@@ -778,6 +830,13 @@ class PegMultiplayerMode(PegMode):
         if success:
             self.connection.send("PLACE_OBSTACLE %i %i" % (x, y))
             self.connection.send("END_TURN")
+
+    def _generate_map(self, mode = MAP_MODE_SYMMETRICAL):
+        PegMode._generate_map(self, mode)
+        if self.no_map_yet == True and self.side == P_BLU:
+            self.no_map_yet = False
+            return
+        self.send_map()
 
     def _handle_input(self):
         for data in self.connection.receive():
@@ -821,13 +880,11 @@ class PegMultiplayerMode(PegMode):
                     row = map(lambda s: int(s), row)
                     tiles.append(row)
                 self.tilemap.from_list(tiles)
+
+                self.no_map_yet = False
             elif command == "DISCONNECT":
                 self.connection.close()
                 self.parent.set_mode(MenuMode())
-
-        if self.turn == 0 and keyboard.just_pressed("r"):
-            self._generate_map()
-            self.send_map()
 
         if self.side == 0:
             old_cursor = self.red_cursor[:]
