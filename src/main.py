@@ -118,12 +118,11 @@ class InstructionsMode(Mode):
             "",
             "Rules:",
             "1. You can only place your pegs in direct line of sight from one of your pegs",
-            "2. You cannot place your peg on a tile that is in enemy line of sight",
-            "3. Every %i turns you can place an obstacle anywhere on the map" % CHARGE_OBSTACLE,
-            "4. Every %i turns you can remove an obstacle from anywhere on the map" % CHARGE_FLOOR,
-            "5. You can not modify already modified terrain",
-            "6. You can not place obstacles next to enemy pegs",
-            "7. You can not place obstacles in %i tile radius around the goal" % PROTECTED_RADIUS,
+            "2. Every %i turns you can place an obstacle anywhere on the map" % CHARGE_OBSTACLE,
+            "3. Every %i turns you can remove an obstacle from anywhere on the map" % CHARGE_FLOOR,
+            "4. You can not modify already modified terrain",
+            "5. You can not place obstacles next to enemy pegs",
+            "6. You can not place obstacles in %i tile radius around the goal" % PROTECTED_RADIUS,
             "",
             "Red player controls(also multiplayer controls):",
             "W/S/A/D - move cursor",
@@ -318,7 +317,7 @@ class PegMode(Mode):
         paths = (
             [T_RED_PATH, T_RED_PATH2],
             [T_BLU_PATH, T_BLU_PATH2]
-        )[player]
+        )[player] + [T_MIX_PATH, T_MIX_PATH2]
         peg = (T_RED_PEG, T_BLU_PEG)[player]
 
         if self.tilemap.get_tile(x, y) in paths:
