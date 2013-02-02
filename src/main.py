@@ -366,7 +366,6 @@ class PegMode(Mode):
             gy = goal[1]
             if x in range(gx - PROTECTED_RADIUS, gx + PROTECTED_RADIUS + 1):
                 if y in range(gy - PROTECTED_RADIUS, gy + PROTECTED_RADIUS + 1):
-                    print "f"
                     return False
 
         charge = (self.red_charge_wall, self.blu_charge_wall)[player]
@@ -831,7 +830,7 @@ class PegMultiplayerMode(PegMode):
             self.connection.send("PLACE_OBSTACLE %i %i" % (x, y))
             self.connection.send("END_TURN")
 
-    def _generate_map(self, mode = MAP_MODE_SYMMETRICAL):
+    def _generate_map(self, mode = MAP_MODE_ASYMMETRICAL):
         PegMode._generate_map(self, mode)
         if self.no_map_yet == True and self.side == P_BLU:
             self.no_map_yet = False
