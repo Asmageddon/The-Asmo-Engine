@@ -2,10 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import sys, os
-import pygame
-
-if not pygame.font: print 'Warning, fonts disabled'
-if not pygame.mixer: print 'Warning, sound disabled'
 
 import math
 import random
@@ -18,6 +14,8 @@ from engine import utils
 from engine._math import rad2deg
 
 from engine.input import mouse, keyboard
+
+import pygame
 
 def gen_list2d(width, height, fill=0):
     return [[fill for y in range(width)] for x in range(height)]
@@ -122,7 +120,7 @@ class InstructionsMode(Mode):
             "Rules:",
             "1. You can only place your pegs in direct line of sight from one of your pegs",
             "2. Every %i turns you can place an obstacle anywhere on the map" % CHARGE_OBSTACLE,
-            "3. Every %i turns you can remove an obstacle from anywhere on the map" % CHARGE_FLOOR,
+            "3. Every %i turns you can clear an obstacle and/or place a 3x3 sanctuary of immutable floor" % CHARGE_FLOOR,
             "4. You can not modify already modified terrain",
             "5. You can not place obstacles next to enemy pegs",
             "6. You can not place obstacles in %i tile radius around the goal" % PROTECTED_RADIUS,
@@ -396,6 +394,12 @@ class PegMode(Mode):
         charge = (self.red_charge_floor, self.blu_charge_floor)[player]
         if charge == CHARGE_FLOOR:
             if self.tilemap.get_tile(x, y) not in IMMUTABLE_TILES:
+                for x2 in range(x - 1, x + 2):
+                    for y2 in range(y - 1, y + 2):
+                        if x2 < 0 or x2 > 31 or y2 < 0 or y2 > 31: continue
+                        if self.tilemap.get_tile(x2, y2) == T_FLOOR:
+                            self.tilemap.set_tile(x2, y2, T_FLOOR2)
+
                 self.tilemap.set_tile(x, y, T_FLOOR2)
                 if player == P_RED: self.red_charge_floor = -1
                 else: self.blu_charge_floor = -1

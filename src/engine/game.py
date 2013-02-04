@@ -1,4 +1,11 @@
-import pygame
+try:
+    import pygame
+    if not pygame.font: raise ImportError
+    if not pygame.mixer: raise ImportError
+except ImportError:
+    import tkMessageBox as box
+    box.showerror("Error", "You need PyGame installed")
+    exit()
 
 from collections import defaultdict
 
@@ -73,18 +80,18 @@ class Game(object):
         self.key._on_enter_frame()
         self.mouse._on_enter_frame()
 
-        ##Some alt+key special hotkeys
-        #if pygame.key.get_mods() & pygame.KMOD_ALT:
-            #if event.key == pygame.K_ESCAPE:
-                #self.running = False
-            #if event.key == pygame.K_F12:
-                #pygame.image.save(self.screen, utils.join_path("user", "screenshot.png"))
-
         for event in pygame.event.get():
             if   event.type == pygame.QUIT:
                 self.running = False #No arguing
 
             elif event.type == pygame.KEYDOWN:
+                #Some alt+key special hotkeys. TODO: Move this elsewhere
+                if pygame.key.get_mods() & pygame.KMOD_ALT:
+                    if event.key == pygame.K_ESCAPE:
+                        self.running = False
+                    if event.key == pygame.K_F12:
+                        pygame.image.save(self.screen, utils.join_path("user", "screenshot.png"))
+
                 self.key._on_key_down(event)
 
             elif event.type == pygame.KEYUP:
