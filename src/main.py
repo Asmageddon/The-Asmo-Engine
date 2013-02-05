@@ -397,7 +397,8 @@ class PegMode(Mode):
                 for x2 in range(x - 1, x + 2):
                     for y2 in range(y - 1, y + 2):
                         if x2 < 0 or x2 > 31 or y2 < 0 or y2 > 31: continue
-                        if self.tilemap.get_tile(x2, y2) == T_FLOOR:
+                        types = [T_FLOOR, T_BLU_PATH, T_RED_PATH, T_MIX_PATH]
+                        if self.tilemap.get_tile(x2, y2) in types:
                             self.tilemap.set_tile(x2, y2, T_FLOOR2)
 
                 self.tilemap.set_tile(x, y, T_FLOOR2)
