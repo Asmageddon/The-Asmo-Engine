@@ -30,3 +30,23 @@ def join_path(directory, resource):
     path = os.path.join(root, directory, resource)
 
     return os.path.normpath(path)
+
+color_dict = {
+    "default": (220, 65, 160)
+}
+
+def convert_color(color):
+    """Converts a color name or hex code into an (r, g, b) tuple"""
+    if   isinstance(color, tuple): return color
+    elif isinstance(color, str):
+        if color[0] == "#":
+            i = int(color[1:], 16)
+            r = i & 255
+            g = i >> 8 & 255
+            b = i >> 16 & 255
+            return (r, g, b)
+        else:
+            try:
+                return color_dict[color]
+            except:
+                return (0, 0, 0)

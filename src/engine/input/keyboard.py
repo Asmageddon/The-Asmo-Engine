@@ -1,4 +1,4 @@
-from singleton_decorator import singleton
+from ..singleton_decorator import singleton
 
 from collections import defaultdict
 

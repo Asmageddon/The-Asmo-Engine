@@ -12,6 +12,8 @@ from collections import defaultdict
 #TODO: Make these into proper components once January's 1GAM is done.... I shouldn't even be "cleaning" this up now ;_;
 from input import Keyboard, Mouse
 
+from resource_manager import ResourceManager
+
 class Game(object):
     def __init__(self):
         pygame.init()
@@ -30,13 +32,20 @@ class Game(object):
 
         self.key = Keyboard()
         self.mouse = Mouse()
+        self.resman = ResourceManager()
 
     def set_title(self, caption):
         """Set window title to 'caption'"""
         pygame.display.set_caption(caption)
 
-    def start(self): pass
-    def stop(self): pass
+    def on_start(self): pass
+    def on_stop(self): pass
+
+    def start(self):
+        self.run()
+
+    def stop(self):
+        self.running = False
 
     def set_mode(self, mode):
         mode._attach_parent(self)
@@ -53,7 +62,7 @@ class Game(object):
             self.current_mode.start()
 
     def run(self):
-        self.start()
+        self.on_start()
 
         if self.current_mode == None: return
 
@@ -61,24 +70,30 @@ class Game(object):
         self.running = True
 
         while(self.running):
-            self.clock.tick(self.fps)
+            time_elapsed = self.clock.tick(self.fps)
 
             self.check_events()
 
             #Run a frame of the current mode and render
-            self.current_mode.run(1.0 / self.fps) #For now let's just pretend the fps is perfect
+            self.current_mode.run(time_elapsed) #For now let's just pretend the fps is perfect
+            self.current_mode.scene.update(time_elapsed)
             self.current_mode.frame += 1 #Increment frame count of active mode
-            self.current_mode.render(self.screen)
+
+            #self.current_mode.render(self.screen)
+
+            self.current_mode.camera.render()
+            self.screen.blit(self.current_mode.camera.surface, (0, 0))
             pygame.display.flip()
 
         self.current_mode.stop()
-        self.stop()
+        self.on_stop()
 
         pygame.quit()
 
     def check_events(self):
         self.key._on_enter_frame()
         self.mouse._on_enter_frame()
+        self.resman._on_enter_frame()
 
         for event in pygame.event.get():
             if   event.type == pygame.QUIT:

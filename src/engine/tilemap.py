@@ -11,8 +11,8 @@ class Tilemap(object):
         self.tiles = [[0 for y in range(width)] for x in range(height)]
 
         size = (
-            width * self.tileset.tile_width,
-            height * self.tileset.tile_height,
+            width * self.tileset.sprite_width,
+            height * self.tileset.sprite_height,
         )
 
         #TODO: Do not preallocate the whole thing
@@ -21,10 +21,10 @@ class Tilemap(object):
         self.render_all()
 
     def render_tile(self, x, y):
-        rect = self.tileset.get_tile_rect(self.tiles[x][y])
+        rect = self.tileset.get_sprite_rect(self.tiles[x][y])
 
-        tw = self.tileset.tile_width
-        th = self.tileset.tile_height
+        tw = self.tileset.sprite_width
+        th = self.tileset.sprite_height
 
         self.image.blit(self.tileset.image, (x * tw, y * th), rect)
 
@@ -45,8 +45,8 @@ class Tilemap(object):
         self.height = len(self.tiles)
 
         size = (
-            self.width * self.tileset.tile_width,
-            self.height * self.tileset.tile_height,
+            self.width * self.tileset.sprite_width,
+            self.height * self.tileset.sprite_height,
         )
         self.image = pygame.Surface(size)
 
