@@ -1,6 +1,7 @@
 class SceneGraphNode(object):
     def __init__(self):
-        self.children = set()
+        self.children_set = set()
+        self.children = []
         self.parent = None
         self.x = 0
         self.y = 0
@@ -18,16 +19,18 @@ class SceneGraphNode(object):
         self.parent = None
 
     def add_child(self, node):
-        if node not in self.children:
-            self.children.add(node)
+        if node not in self.children_set:
+            self.children.append(node)
+            self.children_set.add(node)
             node._attach_parent(self)
         else:
             raise KeyError, "Given node already is a child of this node"
 
     def remove_child(self, node):
-        if node not in self.children:
+        if node not in self.children_set:
             raise KeyError, "Given node not a child of this node"
         else:
+            self.children_set.remove(node)
             self.children.remove(node)
             node._detach_parent(self)
 
@@ -52,5 +55,12 @@ class SceneGraphNode(object):
             c.update(delta_time)
 
     def _update(self, delta_time): pass
+
+    def absolute_pos(self):
+        if self.parent:
+            p = self.parent.absolute_pos()
+            return (self.x + p[0], self.y + p[1])
+        else:
+            return (self.x, self.y)
 
 class Scene(SceneGraphNode): pass

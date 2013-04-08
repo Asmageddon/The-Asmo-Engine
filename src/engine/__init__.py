@@ -12,6 +12,8 @@ import utils
 import input
 from resource_manager import ResourceManager, resman
 
+from display_system import DisplaySystem, display
+
 from bitmap import Bitmap
 from spritesheet import Spritesheet
 
@@ -27,20 +29,22 @@ from tilemap import Tilemap
 __all__ = [
     #Basic classes
     Game, Mode, Camera,
+    #Utility classes
+    Bitmap,
+    Spritesheet,
     #Scene
     SceneGraphNode, Scene,
     Entity,
     Image, Sprite,
-    #Utility classes
-    ResourceManager, resman,
-    Bitmap,
-    Spritesheet,
     Tilemap,
-    #Test game
-    TestGame,
     #Submodules
     math,
     utils,
+    #Systems
+    ResourceManager, resman,
+    DisplaySystem, display,
 
-    input
+    input,
+    #Test game
+    TestGame,
 ]

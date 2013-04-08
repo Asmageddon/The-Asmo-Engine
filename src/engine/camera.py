@@ -2,6 +2,8 @@ import pygame
 
 from bitmap import Bitmap
 
+from display_system import display
+
 class Camera(object):
     def __init__(self, scene = None, width = None, height = None):
         """Camera that holds a surface onto which objects render
@@ -16,12 +18,12 @@ class Camera(object):
 
         self.bg_color = (0, 0, 0)
 
+        self.target = None
+
         self.scene = scene
         if width is None or height is None:
-            surf = pygame.display.get_surface()
-
-            self.width = surf.get_width()
-            self.height = surf.get_height()
+            self.width = display.width
+            self.height = display.height
         else:
             self.width = width
             self.height = height
@@ -39,9 +41,18 @@ class Camera(object):
         pygame.Surface((self.width, self.height))
         self.surface.fill(self.bg_color)
 
+    def follow(self, target):
+        """Follow the given target. Unfollow if it's None"""
+        self.target = target
+
     def render(self):
         #TODO: Direct rendering
         #TODO: Render only once per frame, for multiple viewports
+        if self.target is not None:
+            self.x, self.y = self.target.absolute_pos()
+            self.x -= self.width // 2
+            self.y -= self.height // 2
+
         if self.scene is None: return
         self.surface.fill(self.bg_color)
         offset = (-self.x, -self.y)

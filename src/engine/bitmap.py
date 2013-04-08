@@ -1,5 +1,8 @@
 import pygame
 
+import time
+from collections import defaultdict
+
 import utils
 
 class Bitmap(object):
@@ -10,9 +13,10 @@ class Bitmap(object):
             self._pixels = None
 
         self._source = None
-        self._resman = None
 
-        self._changed = False
+        self._changed = defaultdict()
+        self._change_time = time.time()
+
 
     def fill(self, color, rect = None):
         color = utils.convert_color(color)
@@ -40,11 +44,51 @@ class Bitmap(object):
             self.fill(color, (x, y, w, border))
             self.fill(color, (x, y + h - border, w, border))
 
-    def has_changed(self):
-        return self._changed
+    def get_bitmap(self, path):
+        if path in self.resources["bitmap"]:
+            return self.resources["bitmap"][path]
 
-    def get_surface(self):
-        """Returns the object for internal representation of the image"""
+        _bitmap = utils.load_image(path)
+        self.update_times[path] = time.time()
+        bitmap = Bitmap()
+        bitmap._pixels = _bitmap
+        bitmap._source = path
+
+        self.resources["bitmap"][path] = bitmap
+        return bitmap
+
+    def _load(self, path):
+        if self._pixels is not None: raise RuntimeError, "Already loaded"
+
+        self._pixels = utils.load_image(path)
+        self._source = path
+        self._changed_time = time.time()
+
+    def _reload(self):
+        if self._source == None: return
+        self._pixels = utils.load_image(self._source)
+        self._on_update()
+
+    def _on_update(self):
+        self._changed_time = time.time()
+        for key in self._changed:
+            self._changed[key] = True
+
+    def has_changed_since(self, time):
+        if self._change_time > time: return True
+        return False
+
+    def has_changed(self, user=""):
+        """Either use has_changed_since, or ask with your own user ID"""
+        result = self._changed[user]
+        self._changed[user] = False
+        return result
+
+    def get_surface(self, user = None):
+        """Returns the object for internal representation of the image
+            If user is not None, it will update the access time
+        """
+        if user is not None: self._changed[user] = False
         return self._pixels
 
     width = property(lambda self: self._pixels.get_width())

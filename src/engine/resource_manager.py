@@ -7,10 +7,13 @@ from bitmap import Bitmap
 
 import time, os
 
+from logging import logging
+
 @singleton
 class ResourceManager(object):
     def __init__(self):
         self.resources = { }
+        self.just_changed_resources = {}
         for r in RESOURCE_TYPES:
             self.resources[r] = {}
 
@@ -21,15 +24,25 @@ class ResourceManager(object):
 
         self.last_update = time.time()
 
+
+    def bitmap_or_path(self, bitmap_or_path):
+        "A helper function for flexibly passing bitmaps either directly or via resource paths"
+        if isinstance(bitmap_or_path, basestring):
+            return self.get_bitmap(bitmap_or_path)
+        else:
+            return bitmap_or_path
+
     def get_bitmap(self, path):
-        _bitmap = utils.load_image(path)
+        if path in self.resources["bitmap"]:
+            return self.resources["bitmap"][path]
+
         self.update_times[path] = time.time()
+
         bitmap = Bitmap()
-        bitmap._pixels = _bitmap
-        bitmap._source = path
-        bitmap._resman = self
+        bitmap._load(path)
 
         self.resources["bitmap"][path] = bitmap
+
         return bitmap
 
     def _on_enter_frame(self):
@@ -52,9 +65,8 @@ class ResourceManager(object):
             if resname not in self.update_times: return
 
             if self.update_times[resname] < mtime:
-                self.parent.systems.logging.notice("Reloading resource '%s'" % resname)
-                self.resources["bitmap"][resname]._pixels = utils.load_image(resname)
-                self.resources["bitmap"][resname]._changed = True
+                logging.notice("Reloading resource '%s'" % resname)
+                self.resources["bitmap"][resname]._reload()
                 self.update_times[resname] = mtime
 
 resman = ResourceManager()

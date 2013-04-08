@@ -2,14 +2,15 @@ import utils
 
 from resource_manager import resman
 
+from bitmap import Bitmap
+
 class Spritesheet(object):
-    def __init__(self, path, sprite_width=None, sprite_height=None, x_offset=0, y_offset=0, x_border=0, y_border=0):
+    def __init__(self, bitmap_or_path, sprite_width=None, sprite_height=None, x_offset=0, y_offset=0, x_border=0, y_border=0):
         """Creates a spritesheet from a bitmap file, if sprite_width or sprite_height
         are not given, the whole image is assumed to be one sprite.
         """
-        self.path = path
         #self.bitmap = utils.load_image(path)
-        self.bitmap = resman.get_bitmap(path)
+        self.bitmap = resman.bitmap_or_path(bitmap_or_path)
 
         if sprite_width is None or sprite_height is None:
             self.sprite_width = self.bitmap.width
@@ -17,14 +18,15 @@ class Spritesheet(object):
         else:
             self.sprite_width = sprite_width
             self.sprite_height = sprite_height
+
         self.x_offset = x_offset
         self.y_offset = y_offset
         self.x_border = x_border
         self.y_border = y_border
 
 
-        self.width_in_tiles  = self.bitmap.get_width() // self.sprite_width
-        self.height_in_tiles = self.bitmap.get_width() // self.sprite_height
+        self.width_in_tiles  = self.bitmap.width // self.sprite_width
+        self.height_in_tiles = self.bitmap.width // self.sprite_height
 
     def get_sprite_rect(self, i):
         tx = i % self.width_in_tiles

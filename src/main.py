@@ -14,6 +14,7 @@ from engine import utils
 from engine._math import rad2deg
 
 from engine.input import mouse, keyboard
+from engine import display
 
 import pygame
 
@@ -45,6 +46,14 @@ class Viewport(Entity):
     def _render(self, camera, offset):
         #TODO: Recursion
         if camera == self.camera:
+            rect = (
+                self.x - offset[0],
+                self.y - offset[1],
+                self.width,
+                self.height
+            )
+            #camera.surface.fill((0,0,0), rect)
+            camera.surface.blit(self.camera.surface, offset)
             return
         self.camera.render()
         camera.surface.blit(self.camera.surface, offset)
@@ -57,50 +66,40 @@ class MovingGem(Image):
         self.x += random.randint(1,3) if random.random() <= 0.1 else 0
         self.y += random.randint(1,3) if random.random() <= 0.1 else 0
 
+class ViewportFrame(Image):
+    def __init__(self, viewport):
+        Image.__init__(self, "frame256.png")
+        self.viewport = viewport
+
+    def update(self, delta_time):
+        self.x = self.viewport.camera.x
+        self.y = self.viewport.camera.y
+
 class BaseMode(Mode):
     def start(self):
-        self.visuals = pygame.Surface((768, 768))
-        self.visuals.fill((0, 0, 0))
 
-        font = pygame.font.Font(None, 24)
+        tileset = Spritesheet("test_tileset_12.png", 12, 12)
 
-        lines = [
-            "The goal of this game is to place your pegs next to 4 different goals(yellow tiles)",
-            "and prevent your enemy from doing so",
-            "",
-            "Rules:",
-            "1. Spam",
-            "2. SPAM!",
-            "3. SPAM SPAM SPAM!",
-            "4. SPAMSPAMSPAMSPAMSPAMSPAM!!!!!11",
-            "Other controls:",
-            "R - generate a new map, only works on the first turn",
-            "T - generate a new, symmetric map",
-            "Esc - quit the game, confirm with 'Y'",
-        ]
-
-        for i, line in enumerate(lines):
-            text = font.render(line, 1, (230, 230, 50))
-            textpos = text.get_rect(center=(384, 384 - len(lines) * 12 + i * 24))
-            self.visuals.blit(text, textpos)
-
-        font = pygame.font.Font(None, 32)
-        text = font.render("Press Esc to go back to menu", 1, (240, 30, 30))
-        textpos = text.get_rect(bottom = 768 - 12, right = 768 - 24)
-        self.visuals.blit(text, textpos)
+        self.tilemap = Tilemap(tileset, 16, 16)
+        self.tilemap.set_tile(6, 12, 1)
+        self.scene.add_child(self.tilemap)
 
         self.scene.add_child(Image("gem.png"))
-        g = MovingGem()
-        g.x, g.y = 50, 50
-        self.scene.add_child(g)
 
         v = Viewport(self.scene, 256, 256)
         v.x, v.y = 150, 150
         self.scene.add_child(v)
 
-        v.camera.bg_color = (200, 40, 210)
+        #v.camera.bg_color = (200, 40, 210)
 
         self.viewport1 = v
+
+        g = MovingGem()
+        g.x, g.y = 50, 50
+        self.scene.add_child(g)
+        self.gem = g
+
+        self.scene.add_child(ViewportFrame(v))
 
     def run(self, delta_time):
         if keyboard.just_pressed("escape"):
@@ -118,6 +117,12 @@ class BaseMode(Mode):
         if keyboard.pressed("a"): self.viewport1.camera.x -= 5
         elif keyboard.pressed("d"): self.viewport1.camera.x += 5
 
+        if keyboard.just_pressed("f"):
+            if self.camera.target is None:
+                self.camera.follow(self.gem)
+            else:
+                self.camera.follow(None)
+
 
     def _render(self, surface):
         surface.blit(self.visuals, (0, 0))
@@ -125,9 +130,13 @@ class BaseMode(Mode):
 class MyGame(Game):
     def on_start(self):
         self.fps = 30
+
+        display.set_screen(600, 450, 2)
+        display.set_icon("icon32px.png")
+        display.set_title("A game with not a name")
+
         self.set_mode(BaseMode())
-        pygame.display.set_icon(utils.load_image("icon32px.png"))
-        self.set_title("A game with not a name")
+
 
 if __name__ == '__main__':
     game = PegGame()

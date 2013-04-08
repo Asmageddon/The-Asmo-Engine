@@ -7,17 +7,14 @@ except ImportError:
     box.showerror("Error", "You need PyGame installed")
     exit()
 
-from collections import defaultdict
-
-#TODO: Make these into proper components once January's 1GAM is done.... I shouldn't even be "cleaning" this up now ;_;
 from input import Keyboard, Mouse
 
 from resource_manager import ResourceManager
 
+from display_system import DisplaySystem, display
+
 class Game(object):
     def __init__(self):
-        pygame.init()
-        pygame.mouse.set_visible(1) #Set mouse to visible
 
         self.clock = pygame.time.Clock()
         self.running = False
@@ -25,18 +22,12 @@ class Game(object):
 
         self.fps = 30
 
-        self.width=768; self.height=768
-        self.screen=pygame.display.set_mode((self.width,self.height))
-
-        pygame.display.set_caption("A game")
+        self.display = DisplaySystem()
 
         self.key = Keyboard()
         self.mouse = Mouse()
         self.resman = ResourceManager()
 
-    def set_title(self, caption):
-        """Set window title to 'caption'"""
-        pygame.display.set_caption(caption)
 
     def on_start(self): pass
     def on_stop(self): pass
@@ -54,10 +45,6 @@ class Game(object):
 
         self.current_mode = mode
 
-        #Initialize frame variable of given mode so users don't have to call Mode.__init__ (don't like this ugly Python inheritance :<)
-        if "frame" not in self.current_mode.__dict__:
-            self.current_mode.frame = 0
-
         if self.running:
             self.current_mode.start()
 
@@ -74,16 +61,14 @@ class Game(object):
 
             self.check_events()
 
-            #Run a frame of the current mode and render
+            #Run a frame of the current mode
             self.current_mode.run(time_elapsed) #For now let's just pretend the fps is perfect
             self.current_mode.scene.update(time_elapsed)
             self.current_mode.frame += 1 #Increment frame count of active mode
 
-            #self.current_mode.render(self.screen)
-
             self.current_mode.camera.render()
-            self.screen.blit(self.current_mode.camera.surface, (0, 0))
-            pygame.display.flip()
+
+            self.display.blit(self.current_mode.camera.surface)
 
         self.current_mode.stop()
         self.on_stop()
@@ -94,6 +79,7 @@ class Game(object):
         self.key._on_enter_frame()
         self.mouse._on_enter_frame()
         self.resman._on_enter_frame()
+        self.display._on_enter_frame()
 
         for event in pygame.event.get():
             if   event.type == pygame.QUIT:

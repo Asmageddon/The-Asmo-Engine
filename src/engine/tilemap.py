@@ -2,8 +2,11 @@ import pygame
 
 from tilesheet import Tilesheet
 
-class Tilemap(object):
+from entity import Entity
+
+class Tilemap(Entity):
     def __init__(self, tileset, width, height):
+        Entity.__init__(self)
         self.tileset = tileset
         self.width = width
         self.height = height
@@ -26,7 +29,7 @@ class Tilemap(object):
         tw = self.tileset.sprite_width
         th = self.tileset.sprite_height
 
-        self.image.blit(self.tileset.image, (x * tw, y * th), rect)
+        self.image.blit(self.tileset.bitmap.get_surface(), (x * tw, y * th), rect)
 
     def render_all(self):
         for x in range(self.width):
@@ -40,7 +43,7 @@ class Tilemap(object):
         self.tiles[x][y] = tile
         self.render_tile(x, y)
 
-    def __on_new_data(self):
+    def _on_new_data(self):
         self.width = len(self.tiles[0])
         self.height = len(self.tiles)
 
@@ -55,6 +58,10 @@ class Tilemap(object):
         for row in list_:
             self.tiles.append(row[:])
 
-        self.__on_new_data()
+        self._on_new_data()
 
         self.render_all()
+
+    def _render(self, camera, offset):
+        camera.surface.blit(self.image, offset)
+        #print "Rendering at %i, %i" % offset
